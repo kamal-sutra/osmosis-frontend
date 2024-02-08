@@ -1,4 +1,4 @@
-import { IS_TESTNET } from "./env";
+import { EXCLUDED_EXTERNAL_BOOSTS_POOL_IDS, IS_TESTNET } from "./env";
 
 /** UI will go into "halt mode" if `true`. */
 export const IS_HALTED = false;
@@ -7,36 +7,11 @@ export const UserAction: { [key: string]: boolean } = {
   CreateNewPool: true,
 };
 
-/** Banner below nav bar: mapping of inclusion (.includes()) in page routes to message in banner. */
-export const Announcement:
-  | {
-      localStorageKey?: string;
-      /** Leave undefined to include all pages. */
-      pageRoute?: string;
-      /** English text or key into localization jsons. */
-      enTextOrLocalizationPath: string;
-      /** Link to external page. */
-      link?: {
-        /** Default: "Click here to learn more" in english-us */
-        enTextOrLocalizationKey?: string;
-        url: string;
-        /** External to Osmosis. Show disclaimer before linking out of app. */
-        isExternal?: boolean;
-      };
-      /** Use orange styling, persist on page reloads. */
-      isWarning?: boolean;
-      /** Will always show on page reload. Use with caution. (Warnings persist) */
-      persistent?: boolean;
-      /** Custom Background color. */
-      bg?: string;
-    }
-  | undefined = IS_HALTED
-  ? {
-      enTextOrLocalizationPath:
-        "Chain is halted, transactions are temporarily disabled",
-      isWarning: true,
-    }
-  : undefined;
+/**
+ * Top bar banner configuration has been migrated to the fe-content repo.
+ * @see https://github.com/osmosis-labs/fe-content/blob/main/cms/top-announcement-banner.json
+ */
+// export const Announcement = ...
 
 // Past localstorage keys:
 // * "feedback_wQ1KR7": "Help us shape the future of Osmosis." Give us feedback -> https://tally.so/r/wQ1KR7
@@ -52,11 +27,19 @@ export const TransmuterPoolCodeIds = IS_TESTNET ? ["3084"] : ["148"];
 
 export const RecommendedSwapDenoms = [
   "OSMO",
-  "USDC.axl",
+  "USDC",
   "USDT",
   "ATOM",
+  "TIA",
   "WBTC",
   "ETH",
+];
+
+/**
+ * Pools that are excluded from showing external boost incentives APRs.
+ */
+export const ExcludedExternalBoostPools = EXCLUDED_EXTERNAL_BOOSTS_POOL_IDS ?? [
+  "1423", // stDYDX/DYDX
 ];
 
 export const UnPoolWhitelistedPoolIds: { [poolId: string]: boolean } = {
@@ -85,10 +68,3 @@ export const UnPoolWhitelistedPoolIds: { [poolId: string]: boolean } = {
   "580": true,
   "635": true,
 };
-
-/** List of pools active in LBP to present in frontend. */
-export const PromotedLBPPoolIds: {
-  poolId: string;
-  name: string;
-  ibcHashDenom: string;
-}[] = [];

@@ -5,6 +5,8 @@ import {
   DerivedDataStore as BaseDerivedDataStore,
   IPriceStore,
   ObservableQueryActiveGauges,
+  ObservableQueryClPoolAvgAprs,
+  ObservableQueryPoolAprs,
   ObservableQueryPoolFeesMetrics,
   ObservableQueryPriceRangeAprs,
   OsmosisQueries,
@@ -33,6 +35,8 @@ export class DerivedDataStore extends BaseDerivedDataStore {
       queryPoolFeeMetrics: ObservableQueryPoolFeesMetrics;
       queryActiveGauges: ObservableQueryActiveGauges;
       queryPriceRangeAprs: ObservableQueryPriceRangeAprs;
+      queryClPoolAvgAprs: ObservableQueryClPoolAvgAprs;
+      queryPoolAprs: ObservableQueryPoolAprs;
     },
     protected readonly accountStore: AccountStore<any>,
     protected readonly priceStore: IPriceStore,

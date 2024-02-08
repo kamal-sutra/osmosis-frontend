@@ -90,18 +90,6 @@ export class TestOptimizedRoutes
     super(...args);
   }
 
-  getOptimizedRoutesByTokenIn(
-    ...args: Parameters<TokenOutGivenInRouter["getOptimizedRoutesByTokenIn"]>
-  ) {
-    return super.getOptimizedRoutesByTokenIn(...args);
-  }
-
-  calculateTokenOutByTokenIn(
-    ...args: Parameters<TokenOutGivenInRouter["calculateTokenOutByTokenIn"]>
-  ) {
-    return super.calculateTokenOutByTokenIn(...args);
-  }
-
   getCandidateRoutes(tokenInDenom: string, tokenOutDenom: string): Route[] {
     return super.getCandidateRoutes(tokenInDenom, tokenOutDenom);
   }
@@ -130,8 +118,6 @@ export function makeDefaultTestRouterParams(
   ];
   const params: OptimizedRoutesParams = {
     pools,
-    incentivizedPoolIds: ["1", "2"],
-    stakeCurrencyMinDenom: "uosmo",
     getPoolTotalValueLocked: (poolId: string) =>
       new Dec(10_000_000).mul(new Dec(poolId)),
     ...overrideParams,
@@ -151,18 +137,6 @@ export class RoutesTestOptimizedRoutes
   ) {
     super(...args);
     this.testRoutes = testRoutes;
-  }
-
-  getOptimizedRoutesByTokenIn(
-    ...args: Parameters<TokenOutGivenInRouter["getOptimizedRoutesByTokenIn"]>
-  ) {
-    return super.getOptimizedRoutesByTokenIn(...args);
-  }
-
-  calculateTokenOutByTokenIn(
-    ...args: Parameters<TokenOutGivenInRouter["calculateTokenOutByTokenIn"]>
-  ) {
-    return super.calculateTokenOutByTokenIn(...args);
   }
 
   getCandidateRoutes(): Route[] {
@@ -194,8 +168,6 @@ export function makeRouterWithForceRoutes(
   ];
   const params: OptimizedRoutesParams = {
     pools,
-    incentivizedPoolIds: ["1", "2"],
-    stakeCurrencyMinDenom: "uosmo",
     getPoolTotalValueLocked: (poolId: string) =>
       new Dec(10_000_000).mul(new Dec(poolId)),
     ...overrideParams,

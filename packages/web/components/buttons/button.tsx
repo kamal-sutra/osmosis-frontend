@@ -4,7 +4,7 @@ import { ButtonHTMLAttributes, forwardRef } from "react";
 import { CustomClasses } from "~/components/types";
 
 export const buttonCVA = cva(
-  "flex w-full place-content-center items-center py-2 text-center transition-colors disabled:cursor-default",
+  "flex w-full group place-content-center items-center py-2 text-center transition-colors disabled:cursor-default",
   {
     variants: {
       /**
@@ -83,6 +83,11 @@ export const buttonCVA = cva(
           "hover:text-rust-200",
           "disabled:text-osmoverse-500",
         ],
+        "text-white": [
+          "text-wosmongton-100",
+          "hover:text-rust-200",
+          "disabled:text-osmoverse-500",
+        ],
         "framed-primary": [
           "bg-wosmongton-700",
           "hover:bg-wosmongton-400",
@@ -140,9 +145,31 @@ export const buttonCVA = cva(
           "caption",
           "rounded-xl",
           "p-2",
+          "disabled:hover:bg-osmoverse-800",
+          "disabled:opacity-60",
+          "disabled:cursor-not-allowed",
+        ],
+        "quaternary-modal": [
+          "border-2",
+          "border-osmoverse-800",
+          "border-osmoverse-700",
+          "bg-osmoverse-700",
+          "hover:border-osmoverse-825",
+          "hover:bg-osmoverse-825",
+          "rounded-xl",
+        ],
+        quaternary: [
+          "border-2",
+          "border-osmoverse-700",
+          "border-osmoverse-800",
+          "bg-osmoverse-800",
+          "hover:border-osmoverse-700",
+          "hover:bg-osmoverse-700",
+          "rounded-xl",
         ],
         unstyled: null,
       },
+
       /**
        * Sizes modify the following properties:
        * - height
@@ -164,6 +191,7 @@ export const buttonCVA = cva(
         amount:
           "h-[24px] px-2 py-1 w-auto text-caption font-semibold tracking-wider",
         "md-icon-social": "w-10 h-10 button tracking-wide shrink-0 py-0",
+        "md-min": "w-auto min-w-10 h-10 button tracking-wide shrink-0 py-0",
         unstyled: null,
       },
     },

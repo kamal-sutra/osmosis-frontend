@@ -1,29 +1,35 @@
-import { Currency } from "@keplr-wallet/types";
-import { CoinPretty, Int } from "@keplr-wallet/unit";
-import { useEffect, useState } from "react";
+import { CoinPretty } from "@keplr-wallet/unit";
+import { useQuery } from "@tanstack/react-query";
 
 import { queryErc20Balance } from "~/integrations/ethereum/queries";
 import { EthWallet } from "~/integrations/ethereum/types";
 
 /** Use balance of arbitrary ERC20 EVM contract. */
 export function useErc20Balance(
-  ethWallet: EthWallet,
-  originCurrency?: Currency,
+  ethWallet: EthWallet | undefined,
   erc20ContractAddress?: string
 ) {
-  const [erc20Balance, setErc20Balance] = useState<Int | null>(null);
+  const { data: erc20Balance } = useQuery({
+    queryKey: ["erc20-balance", ethWallet?.chainId, erc20ContractAddress],
+    queryFn: () => {
+      if (!ethWallet || !ethWallet.send) return;
+      if (!ethWallet.accountAddress || !erc20ContractAddress) return;
 
-  const address = ethWallet.accountAddress;
-  const sendFn = ethWallet.send;
-
-  useEffect(() => {
-    if (address && erc20ContractAddress) {
-      queryErc20Balance(sendFn, erc20ContractAddress, address).then(
-        setErc20Balance
+      return queryErc20Balance(
+        ethWallet.send,
+        erc20ContractAddress,
+        ethWallet.accountAddress
       );
-    }
-  }, [ethWallet.chainId, address, erc20ContractAddress, sendFn]);
+    },
+  });
 
-  if (!originCurrency || !erc20Balance) return;
-  return new CoinPretty(originCurrency, erc20Balance);
+  if (!erc20Balance) return;
+  return new CoinPretty(
+    {
+      coinDecimals: erc20Balance.decimals,
+      coinMinimalDenom: erc20Balance.symbol,
+      coinDenom: erc20Balance.symbol,
+    },
+    erc20Balance.amount
+  );
 }

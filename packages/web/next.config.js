@@ -7,7 +7,7 @@ const path = require("path");
 const config = {
   reactStrictMode: true,
   images: {
-    domains: ["app.osmosis.zone", "raw.githubusercontent.com"],
+    domains: ["app.osmosis.zone", "raw.githubusercontent.com", "pbs.twimg.com"],
   },
   webpack(config) {
     /**
@@ -31,11 +31,6 @@ const config = {
     });
 
     fileLoaderRule.exclude = /sprite\.svg$/;
-
-    // workaround to get imports to work in web workers
-    config.optimization.splitChunks.cacheGroups = {
-      commons: { chunks: "initial" },
-    };
 
     // Replace libsodium with a no-op API. It is only imported from within cosmJS to support
     // argon2i and ed25519, both functionalities which in the context of Cosmos would only get used within

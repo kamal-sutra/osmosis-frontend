@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 import { useEffect } from "react";
 
 import { useStore } from "~/stores";
@@ -7,7 +8,7 @@ export function useNavBar({
   title,
   ctas,
 }: {
-  title?: string;
+  title?: ReactNode;
   ctas?: CallToAction[];
 }) {
   const { navBarStore } = useStore();
@@ -19,5 +20,6 @@ export function useNavBar({
       navBarStore.title = undefined;
       navBarStore.callToActionButtons = [];
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, ctas]);
 }

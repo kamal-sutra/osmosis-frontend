@@ -1,4 +1,4 @@
-import { CoinPretty } from "@keplr-wallet/unit";
+import { CoinPretty, Dec } from "@keplr-wallet/unit";
 import React from "react";
 import { useMemo } from "react";
 
@@ -8,9 +8,11 @@ import { GenericMainCard } from "~/components/cards/generic-main-card";
 import { StakeInfoCard } from "~/components/cards/stake-info-card";
 import { UnbondingCard } from "~/components/cards/unbonding-card";
 import { StakeTab } from "~/components/control/stake-tab";
+import { StakeOrUnstake } from "~/components/types";
 import { useTranslation } from "~/hooks";
 
 export const StakeTool: React.FC<{
+  hasInsufficientBalance: boolean;
   inputAmount?: string;
   handleHalfButtonClick: () => void;
   handleMaxButtonClick: () => void;
@@ -19,14 +21,15 @@ export const StakeTool: React.FC<{
   setInputAmount: (amount: string) => void;
   setShowValidatorNextStepModal: (val: boolean) => void;
   stakeAmount?: CoinPretty;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  balance?: string;
-  stakedBalance?: CoinPretty;
+  activeTab: StakeOrUnstake;
+  setActiveTab: (tab: StakeOrUnstake) => void;
   isWalletConnected: boolean;
+  availableAmount?: CoinPretty;
   onStakeButtonClick: () => void;
   disabled: boolean;
+  stakingAPR: Dec;
 }> = ({
+  hasInsufficientBalance,
   inputAmount,
   handleHalfButtonClick,
   handleMaxButtonClick,
@@ -34,29 +37,31 @@ export const StakeTool: React.FC<{
   isHalf = false,
   activeTab,
   setActiveTab,
-  balance,
-  stakedBalance,
+  availableAmount,
   setInputAmount,
   stakeAmount,
   isWalletConnected,
   onStakeButtonClick,
   disabled,
+  stakingAPR,
 }) => {
   const { t } = useTranslation();
 
   const buttonText = useMemo(() => {
     if (!isWalletConnected) return t("connectWallet");
 
+    const showInsufficientText =
+      inputAmount?.toString() !== "" && hasInsufficientBalance;
+
+    if (showInsufficientText)
+      return activeTab === "Stake"
+        ? t("errors.insufficientBal")
+        : t("errors.insufficientAmount");
+
     return activeTab === "Stake"
       ? t("stake.mainCardButtonText")
       : t("stake.mainCardButtonUnstakeText");
-  }, [activeTab, isWalletConnected, t]);
-
-  const balanceString = useMemo(() => {
-    return activeTab === "Stake"
-      ? balance?.toString()
-      : stakedBalance?.toString();
-  }, [activeTab, balance, stakedBalance]);
+  }, [activeTab, isWalletConnected, t, hasInsufficientBalance, inputAmount]);
 
   return (
     <GenericMainCard title={t("stake.stake")}>
@@ -79,12 +84,16 @@ export const StakeTool: React.FC<{
         isHalf={isHalf}
         handleMaxButtonClick={handleMaxButtonClick}
         isMax={isMax}
-        balance={balanceString}
+        availableAmount={availableAmount}
         setInputAmount={setInputAmount}
         inputAmount={inputAmount}
+        activeTab={activeTab}
       />
       {activeTab === "Stake" ? (
-        <EstimatedEarningCard stakeAmount={stakeAmount} />
+        <EstimatedEarningCard
+          stakeAmount={stakeAmount}
+          stakingAPR={stakingAPR}
+        />
       ) : (
         <UnbondingCard />
       )}

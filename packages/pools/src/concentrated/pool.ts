@@ -150,7 +150,7 @@ export class ConcentratedLiquidityPool implements BasePool, RoutablePool {
 
   constructor(
     readonly raw: ConcentratedLiquidityPoolRaw,
-    protected readonly tickDataProvider: TickDataProvider
+    protected readonly tickDataProvider?: TickDataProvider
   ) {}
 
   hasPoolAsset(denom: string): boolean {
@@ -193,6 +193,7 @@ export class ConcentratedLiquidityPool implements BasePool, RoutablePool {
     swapFee: Dec = this.swapFee
   ): Promise<Quote> {
     validateDenoms(this, tokenIn.denom, tokenOutDenom);
+    if (!this.tickDataProvider) throw new Error("TickDataProvider is not set");
 
     tokenIn.amount = new Dec(tokenIn.amount)
       .mul(new Dec(1).sub(this.takerFee))
@@ -292,7 +293,6 @@ export class ConcentratedLiquidityPool implements BasePool, RoutablePool {
       effectivePriceInOverOut: effectivePriceInOverOut.toDec(),
       effectivePriceOutOverIn: invertIfNonZero(effectivePriceInOverOut).toDec(),
       priceImpactTokenOut: priceImpactTokenOut.toDec(),
-      numTicksCrossed: calcResult.numTicksCrossed,
     };
   }
 
@@ -305,6 +305,7 @@ export class ConcentratedLiquidityPool implements BasePool, RoutablePool {
     swapFee: Dec = this.swapFee
   ): Promise<Quote> {
     validateDenoms(this, tokenInDenom, tokenOut.denom);
+    if (!this.tickDataProvider) throw new Error("TickDataProvider is not set");
 
     tokenOut.amount = new Dec(tokenOut.amount)
       .mul(new Dec(1).sub(this.takerFee))
@@ -401,7 +402,6 @@ export class ConcentratedLiquidityPool implements BasePool, RoutablePool {
         .quoTruncate(effectivePriceInOverOut)
         .toDec(),
       priceImpactTokenOut: priceImpactTokenOut.toDec(),
-      numTicksCrossed: calcResult.numTicksCrossed,
     };
   }
 

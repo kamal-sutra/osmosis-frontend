@@ -12,9 +12,9 @@ import { FunctionComponent } from "react";
 
 import { Icon } from "~/components/assets";
 import { BaseCell, Table } from "~/components/table";
-import { Breakpoint, CustomClasses } from "~/components/types";
-import { useTranslation } from "~/hooks";
-import { useWindowSize } from "~/hooks";
+import { CustomClasses } from "~/components/types";
+import { Breakpoint, useTranslation, useWindowSize } from "~/hooks";
+import { GetTransferStatusParams } from "~/integrations/bridges/types";
 import { useStore } from "~/stores";
 import { truncateString } from "~/utils/string";
 
@@ -52,7 +52,9 @@ export const TransferHistoryTable: FunctionComponent<CustomClasses> = observer(
           reason,
           isWithdraw,
         }) => ({
-          txHash: key,
+          txHash: key.startsWith("{")
+            ? (JSON.parse(key) as GetTransferStatusParams).sendTxHash
+            : key,
           createdAtMs: createdAt.getTime(),
           explorerUrl,
           amount,
@@ -109,11 +111,17 @@ export const TransferHistoryTable: FunctionComponent<CustomClasses> = observer(
               className: "md:!pl-2",
               displayCell: TxHashDisplayCell,
             },
-            { display: t("assets.historyTable.colums.type") },
-            { display: t("assets.historyTable.colums.amount") },
+            {
+              display: t("assets.historyTable.colums.type"),
+              className: "text-left",
+            },
+            {
+              display: t("assets.historyTable.colums.amount"),
+              className: "text-left",
+            },
             {
               display: t("assets.historyTable.colums.status"),
-              collapseAt: Breakpoint.SM,
+              collapseAt: Breakpoint.sm,
               className: "md:!pr-2",
               displayCell: StatusDisplayCell,
             },

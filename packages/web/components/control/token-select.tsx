@@ -61,7 +61,7 @@ export const TokenSelect: FunctionComponent<{
         chainName:
           chainStore.getChainFromCurrency(
             token instanceof CoinPretty ? token.denom : token.coinDenom
-          )?.chainName ?? "",
+          )?.prettyChainName ?? "",
       }))
       .sort((a, b) => {
         if (
@@ -143,7 +143,7 @@ export const TokenSelect: FunctionComponent<{
             }}
           >
             {selectedCurrency.coinImageUrl && (
-              <div className="mr-1 h-[50px] w-[50px] shrink-0 overflow-hidden rounded-full md:h-7 md:w-7">
+              <div className="mr-1 h-[50px] w-[50px] shrink-0 overflow-hidden rounded-full md:h-[30px] md:w-[30px]">
                 <Image
                   src={selectedCurrency.coinImageUrl}
                   alt="token icon"
@@ -175,7 +175,7 @@ export const TokenSelect: FunctionComponent<{
               </div>
               <div className="subtitle2 md:caption w-24 text-osmoverse-400">
                 {chainStore.getChainFromCurrency(selectedCurrency.coinDenom)
-                  ?.chainName ?? ""}
+                  ?.prettyChainName ?? ""}
               </div>
             </div>
           </button>

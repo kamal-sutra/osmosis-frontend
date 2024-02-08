@@ -6,32 +6,35 @@ import React, { FunctionComponent, useCallback } from "react";
 
 import { Button } from "~/components/buttons";
 import { OsmoverseCard } from "~/components/cards/osmoverse-card";
-import { useTranslation } from "~/hooks";
-import { useWindowSize } from "~/hooks";
+import { StakeOrUnstake } from "~/components/types";
+import { useTranslation, useWindowSize } from "~/hooks";
 import { useStore } from "~/stores";
+import { formatPretty } from "~/utils/formatter";
 
 const OSMO_IMG_URL = "/tokens/osmo.svg";
 
 export const StakeInfoCard: FunctionComponent<{
-  balance?: string;
+  availableAmount?: CoinPretty;
   setInputAmount: (amount: string) => void;
   inputAmount: string | undefined;
   handleHalfButtonClick: () => void;
   handleMaxButtonClick: () => void;
   isMax?: boolean;
   isHalf?: boolean;
+  activeTab: StakeOrUnstake;
 }> = observer(
   ({
-    balance,
+    availableAmount,
     inputAmount,
     setInputAmount,
     handleHalfButtonClick,
     handleMaxButtonClick,
     isMax = false,
     isHalf = false,
+    activeTab,
   }) => {
     const { t } = useTranslation();
-    const isMobile = useWindowSize();
+    const { isMobile } = useWindowSize();
 
     const { chainStore, priceStore } = useStore();
     const osmo = chainStore.osmosis.stakeCurrency;
@@ -51,18 +54,36 @@ export const StakeInfoCard: FunctionComponent<{
 
     const handleInputChange = useCallback(
       (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { value } = e.target;
-        setInputAmount(value);
+        e.preventDefault();
+
+        if (
+          !isNaN(Number(e.target.value)) &&
+          Number(e.target.value) >= 0 &&
+          Number(e.target.value) <= Number.MAX_SAFE_INTEGER &&
+          e.target.value.length <= (isMobile ? 19 : 26)
+        ) {
+          const { value } = e.target;
+          setInputAmount(value);
+        }
       },
-      [setInputAmount]
+      [setInputAmount, isMobile]
+    );
+
+    const formattedAvailableAmount = formatPretty(
+      availableAmount || new CoinPretty(osmo, 0),
+      { maxDecimals: 2 }
     );
 
     return (
       <OsmoverseCard>
         <div className="flex place-content-between items-center transition-opacity">
           <div className="caption flex">
-            <span className="text-white-full">{t("stake.available")}</span>
-            <span className="ml-1.5 text-wosmongton-300">{balance}</span>
+            <span className="text-white-full">
+              {activeTab === "Stake" ? t("stake.available") : t("stake.staked")}
+            </span>
+            <span className="ml-1.5 text-wosmongton-300">
+              {formattedAvailableAmount}
+            </span>
           </div>
           <div className="flex items-center gap-1.5">
             <Button
@@ -102,22 +123,21 @@ export const StakeInfoCard: FunctionComponent<{
             </h6>
             <span className="caption w-fit text-osmoverse-400">Osmosis</span>
           </div>
-          <div className="flex-end flex w-full flex-grow flex-col place-content-around items-center text-right">
+          <div className="flex-end flex w-full flex-grow flex-col place-content-around items-center overflow-hidden text-right">
             <input
               type="number"
               className={classNames(
                 "placeholder:text-white w-full bg-transparent text-right text-white-full focus:outline-none md:text-subtitle1",
-                Number(inputAmount?.length) >= 14
-                  ? "caption"
-                  : "text-h5 font-h5 md:font-subtitle1"
+                "text-h5 font-h5 md:font-subtitle1",
+                "overflow-hidden"
               )}
               placeholder="0"
               onChange={handleInputChange}
-              value={inputAmount || "0"}
+              value={inputAmount}
             />
             <h5
               className={classNames(
-                "w-full text-right text-osmoverse-300 transition-opacity md:text-h6 md:font-h6",
+                "w-full truncate text-right text-osmoverse-300 transition-opacity md:text-h6 md:font-h6",
                 outAmountValue ? "opacity-100" : "opacity-50"
               )}
             >

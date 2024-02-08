@@ -15,16 +15,20 @@ import {
 } from "@osmosis-labs/keplr-stores";
 import {
   BasePool,
+  CONCENTRATED_LIQ_POOL_TYPE,
   ConcentratedLiquidityPool,
-  ConcentratedLiquidityPoolRaw,
+  COSMWASM_POOL_TYPE,
   CosmwasmPoolRaw,
+  makeStaticPoolFromRaw,
+  PoolRaw,
+  PoolType,
   RoutablePool,
   SharePool,
+  STABLE_POOL_TYPE,
   StablePool,
-  StablePoolRaw,
   TransmuterPool,
+  WEIGHTED_POOL_TYPE,
   WeightedPool,
-  WeightedPoolRaw,
 } from "@osmosis-labs/pools";
 import dayjs from "dayjs";
 import { Duration } from "dayjs/plugin/duration";
@@ -38,18 +42,6 @@ import {
 } from "../../queries/concentrated-liquidity";
 import { Head } from "../../queries/utils";
 import { ObservableQueryExternalBase } from "../base";
-
-export type PoolRaw =
-  | WeightedPoolRaw
-  | StablePoolRaw
-  | ConcentratedLiquidityPoolRaw
-  | CosmwasmPoolRaw;
-
-const STABLE_POOL_TYPE = "/osmosis.gamm.poolmodels.stableswap.v1beta1.Pool";
-const WEIGHTED_POOL_TYPE = "/osmosis.gamm.v1beta1.Pool";
-const CONCENTRATED_LIQ_POOL_TYPE =
-  "/osmosis.concentratedliquidity.v1beta1.Pool";
-const COSMWASM_POOL_TYPE = "/osmosis.cosmwasmpool.v1beta1.CosmWasmPool";
 
 /** Query store that can refresh an individual pool's data from the node.
  *  Uses a few different concrete classes to represent the different types of pools.
@@ -69,27 +61,12 @@ export class ObservableQueryPool extends ObservableQueryExternalBase<{
 
   @computed
   get pool(): BasePool & RoutablePool {
-    if (this.raw["@type"] === STABLE_POOL_TYPE) {
-      return new StablePool(this.raw as StablePoolRaw);
-    }
-    if (this.raw["@type"] === WEIGHTED_POOL_TYPE) {
-      return new WeightedPool(this.raw as WeightedPoolRaw);
-    }
-    if (this.raw["@type"] === CONCENTRATED_LIQ_POOL_TYPE) {
-      return new ConcentratedLiquidityPool(
-        this.raw as ConcentratedLiquidityPoolRaw,
-        new ConcentratedLiquidityPoolTickDataProvider(
-          this.queryLiquiditiesInNetDirection
-        )
-      );
-    }
-    if (this.raw["@type"] === COSMWASM_POOL_TYPE) {
-      // currently only support transmuter pools
-      return new TransmuterPool(this.raw as CosmwasmPoolRaw);
-    }
-
-    // Query pool should not be created without a supported pool
-    throw new Error("Raw type not recognized");
+    return makeStaticPoolFromRaw(
+      this.raw,
+      new ConcentratedLiquidityPoolTickDataProvider(
+        this.queryLiquiditiesInNetDirection
+      )
+    );
   }
 
   get sharePool(): SharePool | undefined {
@@ -158,7 +135,7 @@ export class ObservableQueryPool extends ObservableQueryExternalBase<{
   }
 
   @computed
-  get type(): "weighted" | "stable" | "concentrated" | "transmuter" {
+  get type(): PoolType {
     return this.pool.type;
   }
 

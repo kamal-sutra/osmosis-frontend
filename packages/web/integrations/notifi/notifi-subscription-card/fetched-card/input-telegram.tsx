@@ -94,7 +94,7 @@ export const InputTelegram: FunctionComponent<Props> = ({
           setIsVerificationRequested(true);
         })
         .catch((e) => {
-          console.log("error", e);
+          console.error(e);
         });
     }
   };
@@ -140,7 +140,7 @@ export const InputTelegram: FunctionComponent<Props> = ({
             : "hidden"
         } h-7 ${
           isVerificationRequested ? "w-[5.5625rem]" : "w-[4.625rem]"
-        } rounded-[50rem] text-button`}
+        } rounded-full text-button`}
         size={"unstyled"}
         disabled={
           !telegramRegex.test(inputProps.value?.toString() ?? "") ||

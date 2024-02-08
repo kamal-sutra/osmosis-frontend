@@ -1,8 +1,7 @@
-import type { AssetList, Chain } from "@chain-registry/types";
+import type { AssetList as CosmologyAssetList } from "@chain-registry/types";
 import {
   AminoMsg,
   encodeSecp256k1Pubkey,
-  makeSignDoc as makeSignDocAmino,
   OfflineAminoSigner,
 } from "@cosmjs/amino";
 import { fromBase64 } from "@cosmjs/encoding";
@@ -23,12 +22,14 @@ import {
 } from "@cosmjs/stargate";
 import {
   MainWalletBase,
+  SignOptions,
   WalletConnectOptions,
   WalletManager,
   WalletStatus,
 } from "@cosmos-kit/core";
 import { BaseAccount } from "@keplr-wallet/cosmos";
 import { KeplrSignOptions } from "@keplr-wallet/types";
+import { Dec } from "@keplr-wallet/unit";
 import {
   ChainedFunctionifyTuple,
   ChainGetter,
@@ -43,8 +44,16 @@ import {
   ibcProtoRegistry,
   osmosisProtoRegistry,
 } from "@osmosis-labs/proto-codecs";
-import axios, { AxiosError } from "axios";
+import type { AssetList, Chain } from "@osmosis-labs/types";
+import {
+  apiClient,
+  ApiClientError,
+  getSourceDenomFromAssetList,
+  isNil,
+} from "@osmosis-labs/utils";
+import axios from "axios";
 import { Buffer } from "buffer/";
+import cachified, { CacheEntry } from "cachified";
 import { SignMode } from "cosmjs-types/cosmos/tx/signing/v1beta1/signing";
 import {
   AuthInfo,
@@ -53,9 +62,10 @@ import {
   TxBody,
   TxRaw,
 } from "cosmjs-types/cosmos/tx/v1beta1/tx";
+import Long from "long";
+import { LRUCache } from "lru-cache";
 import { action, makeObservable, observable, runInAction } from "mobx";
 import { fromPromise, IPromiseBasedObservable } from "mobx-utils";
-import { WalletConnectionInProgressError } from "src/account/wallet-errors";
 import { Optional, UnionToIntersection } from "utility-types";
 
 import { OsmosisQueries } from "../queries";
@@ -64,17 +74,27 @@ import { aminoConverters } from "./amino-converters";
 import {
   AccountStoreWallet,
   DeliverTxResponse,
+  NEXT_TX_TIMEOUT_HEIGHT_OFFSET,
   RegistryWallet,
   TxEvent,
+  TxEvents,
 } from "./types";
 import {
   CosmosKitAccountsLocalStorageKey,
+  DefaultGasPriceStep,
   getEndpointString,
   getWalletEndpoints,
   logger,
+  makeSignDocAmino,
   removeLastSlash,
   TxFee,
 } from "./utils";
+import { WalletConnectionInProgressError } from "./wallet-errors";
+
+export const GasMultiplier = 1.5;
+
+// The value of zero represent that there is not timeout height set.
+const timeoutHeightDisabledStr = "0";
 
 export class AccountStore<Injects extends Record<string, any>[] = []> {
   protected accountSetCreators: ChainedFunctionifyTuple<
@@ -114,6 +134,22 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
     ...osmosisProtoRegistry,
   ]) as unknown as SigningStargateClient["registry"];
 
+  private _cache = new LRUCache<string, CacheEntry>({ max: 30 });
+
+  /**
+   * We make sure that the 'base' field always has as its value the native chain parameter
+   * and not values derived from the IBC connection with Osmosis
+   */
+  private get walletManagerAssets() {
+    return this.assets.map((assetList) => ({
+      ...assetList,
+      assets: assetList.assets.map((asset) => ({
+        ...asset,
+        base: asset.traces ? getSourceDenomFromAssetList(asset) : asset.base,
+      })),
+    })) as CosmologyAssetList[];
+  }
+
   constructor(
     public readonly chains: (Chain & { features?: string[] })[],
     readonly osmosisChainId: string,
@@ -125,11 +161,7 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
     protected readonly chainGetter: ChainGetter,
     protected readonly options: {
       walletConnectOptions?: WalletConnectOptions;
-      preTxEvents?: {
-        onBroadcastFailed?: (string: string, e?: Error) => void;
-        onBroadcasted?: (string: string, txHash: Uint8Array) => void;
-        onFulfill?: (string: string, tx: any) => void;
-      };
+      preTxEvents?: TxEvents;
       broadcastUrl?: string;
       simulateUrl?: string;
       wsObject?: new (url: string, protocols?: string | string[]) => WebSocket;
@@ -150,7 +182,7 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
   private _createWalletManager(wallets: MainWalletBase[]) {
     this._walletManager = new WalletManager(
       this.chains,
-      this.assets,
+      this.walletManagerAssets,
       wallets,
       logger,
       true,
@@ -478,7 +510,8 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
           wallet,
           msgs,
           fee ?? { amount: [] },
-          memo
+          memo,
+          wallet.walletInfo?.signOptions
         );
       } else {
         usedFee = fee;
@@ -701,9 +734,16 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
     );
 
     const signMode = SignMode.SIGN_MODE_LEGACY_AMINO_JSON;
-    const msgs = messages.map((msg) =>
-      wallet?.signingStargateOptions?.aminoTypes?.toAmino(msg)
-    ) as AminoMsg[];
+    const msgs = messages.map((msg) => {
+      const res: any = wallet?.signingStargateOptions?.aminoTypes?.toAmino(msg);
+      // Include the 'memo' field again because the 'registry' omits it
+      if (msg.value.memo) {
+        res.value.memo = msg.value.memo;
+      }
+      return res;
+    }) as AminoMsg[];
+
+    const timeoutHeight = await this.getTimeoutHeight(chainId);
 
     const signDoc = makeSignDocAmino(
       msgs,
@@ -711,7 +751,8 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
       chainId,
       memo,
       accountNumber,
-      sequence
+      sequence,
+      timeoutHeight
     );
 
     const { signature, signed } = await (wallet.client.signAmino
@@ -726,21 +767,22 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
           signDoc
         ));
 
-    const signedTxBody = {
-      messages: signed.msgs.map((msg) =>
-        wallet?.signingStargateOptions?.aminoTypes?.fromAmino(msg)
-      ),
-      memo: signed.memo,
-    };
-
-    const signedTxBodyEncodeObject = {
-      typeUrl: "/cosmos.tx.v1beta1.TxBody",
-      value: signedTxBody,
-    };
-
-    const signedTxBodyBytes = wallet?.signingStargateOptions?.registry?.encode(
-      signedTxBodyEncodeObject
-    );
+    const signedTxBodyBytes =
+      wallet?.signingStargateOptions?.registry?.encodeTxBody({
+        messages: signed.msgs.map((msg) => {
+          const res: any =
+            wallet?.signingStargateOptions?.aminoTypes?.fromAmino(msg);
+          // Include the 'memo' field again because the 'registry' omits it
+          if (msg.value.memo) {
+            res.value.memo = msg.value.memo;
+          }
+          return res;
+        }),
+        memo: signed.memo,
+        timeoutHeight: Long.fromString(
+          signDoc.timeout_height ?? timeoutHeightDisabledStr
+        ),
+      });
 
     const signedGasLimit = Int53.fromString(String(signed.fee.gas)).toNumber();
     const signedSequence = Int53.fromString(String(signed.sequence)).toNumber();
@@ -758,6 +800,30 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
       authInfoBytes: signedAuthInfoBytes,
       signatures: [fromBase64(signature.signature)],
     });
+  }
+
+  // Gets the timeout height as the sum of the latest block height and an offset.
+  // If for any reason we fail to get the latest block height, we disable the timeout height by returning
+  // a string value of 0.
+  private async getTimeoutHeight(chainId: string): Promise<bigint> {
+    // Get status query.
+    const queryRPCStatus = this.queriesStore.get(chainId).cosmos.queryRPCStatus;
+
+    // Wait for the response.
+    const result = await queryRPCStatus.waitFreshResponse();
+
+    // Retrieve the latest block height. If not present, set it to 0.
+    const latestBlockHeight = result
+      ? result.data.result.sync_info.latest_block_height
+      : timeoutHeightDisabledStr;
+
+    // If for any reason we fail to get the latest block height, we disable the timeout height.
+    if (latestBlockHeight == timeoutHeightDisabledStr) {
+      return BigInt(timeoutHeightDisabledStr);
+    }
+
+    // Otherwise we compute the timeout height as given by latest block height + offset.
+    return BigInt(latestBlockHeight) + NEXT_TX_TIMEOUT_HEIGHT_OFFSET;
   }
 
   private async signDirect(
@@ -893,12 +959,12 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
    * 1. Encodes the messages using the available registry.
    * 2. Constructs an unsigned transaction object, including specific signing modes, and possibly ignores the public key in simulation.
    * 3. Sends a POST request to simulate the transaction.
-   * 4. Calculates the estimated gas used, multiplying by a fixed factor (1.5) to provide a buffer.
+   * 4. Calculates the estimated gas used, multiplying by a fixed factor (2) to provide a buffer.
    * 5. Includes specific error handling for errors returned from the axios request.
    * 6. Utilizes a placeholder signature since the transaction signature is not actually verified.
    *
    * Note: The estimated gas might be slightly lower than actual given fluctuations in gas prices.
-   * This is offset by multiplying the estimated gas by a fixed factor (1.5) to provide a buffer.
+   * This is offset by multiplying the estimated gas by a fixed factor (2) to provide a buffer.
    *
    * If the chain does not support transaction simulation, the function may
    * fall back to using the provided fee parameter.
@@ -907,7 +973,8 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
     wallet: AccountStoreWallet,
     messages: readonly EncodeObject[],
     fee: Optional<TxFee, "gas">,
-    memo: string
+    memo: string,
+    signOptions: SignOptions = {}
   ): Promise<TxFee> {
     const encodedMessages = messages.map((m) => this.registry.encodeAsAny(m));
     const { sequence } = await this.getSequence(wallet);
@@ -948,37 +1015,50 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
     const restEndpoint = getEndpointString(await wallet.getRestEndpoint(true));
 
     try {
-      const result = await axios.post<{
+      const result = await apiClient<{
         gas_info: {
           gas_used: string;
         };
       }>(this.options?.simulateUrl ?? "/api/simulate-transaction", {
-        restEndpoint: removeLastSlash(restEndpoint),
-        tx_bytes: Buffer.from(unsignedTx).toString("base64"),
+        data: {
+          restEndpoint: removeLastSlash(restEndpoint),
+          tx_bytes: Buffer.from(unsignedTx).toString("base64"),
+        },
       });
 
-      const gasUsed = Number(result.data.gas_info.gas_used);
+      const gasUsed = Number(result.gas_info.gas_used);
       if (Number.isNaN(gasUsed)) {
-        throw new Error(
-          `Invalid integer gas: ${result.data.gas_info.gas_used}`
-        );
+        throw new Error(`Invalid integer gas: ${result.gas_info.gas_used}`);
       }
 
-      const multiplier = 1.5;
+      /**
+       * The gas amount is multiplied by a specific factor to provide additional
+       * gas to the transaction, mitigating the risk of failure due to fluctuating gas prices.
+       *  */
+      const gas = String(Math.round(gasUsed * GasMultiplier));
+
+      console.log(signOptions);
+
+      if (signOptions.preferNoSetFee) {
+        return {
+          gas,
+          amount: [await this.getGasAmount(gas, wallet.chainId)],
+        };
+      }
+
       return {
-        /**
-         * The gas amount is multiplied by a specific factor to provide additional
-         * gas to the transaction, mitigating the risk of failure due to fluctuating gas prices.
-         *  */
-        gas: String(Math.round(gasUsed * multiplier)),
+        gas,
         amount: [],
       };
     } catch (e) {
-      if (e instanceof AxiosError) {
-        const axiosError = e as AxiosError<{ code?: number; message: string }>;
+      if (e instanceof ApiClientError) {
+        const apiClientError = e as ApiClientError<{
+          code?: number;
+          message: string;
+        }>;
 
-        const status = axiosError.response?.status;
-        const message = axiosError.response?.data?.message;
+        const status = apiClientError.response?.status;
+        const message = apiClientError.data?.message;
 
         if (status !== 400 || !message || typeof message !== "string") throw e;
 
@@ -991,12 +1071,75 @@ export class AccountStore<Injects extends Record<string, any>[] = []> {
         }
 
         // If there is a code, it's a simulate tx error and we should forward its message.
-        if (axiosError.response?.data?.code) {
-          throw new Error(axiosError.response?.data?.message);
+        if (apiClientError?.data?.code) {
+          throw new Error(apiClientError?.data?.message);
         }
       }
 
       throw e;
     }
+  }
+
+  async getGasAmount(gasLimit: string, chainId: string) {
+    let gasPrice: number | undefined;
+
+    const counterpartyChain = this.chains.find(
+      ({ chain_id }) => chain_id === chainId
+    );
+
+    if (!counterpartyChain) throw new Error(`Chain (${chainId}) not found`);
+
+    if (chainId === this.osmosisChainId) {
+      try {
+        const result = await this.queryOsmosisGasPrice();
+
+        /**
+         * The gas amount is multiplied by a specific factor to provide additional
+         * gas to the transaction, mitigating the risk of failure due to fluctuating gas prices.
+         *  */
+        gasPrice = result.baseFee * GasMultiplier;
+      } catch (e) {
+        console.warn(
+          "Failed to fetch Osmosis gas price. Using default gas price. Error stack: ",
+          e
+        );
+      }
+    }
+
+    const feeCurrency = counterpartyChain.fees.fee_tokens[0];
+    if (isNil(gasPrice) && feeCurrency && feeCurrency.average_gas_price) {
+      gasPrice = feeCurrency.average_gas_price;
+    }
+
+    if (isNil(gasPrice)) {
+      gasPrice = DefaultGasPriceStep.average;
+    }
+
+    const gasPriceDec = new Dec(gasPrice);
+    return {
+      amount: gasPriceDec.mul(new Dec(gasLimit)).roundUp().toString(),
+      denom: feeCurrency.denom,
+    };
+  }
+
+  public async queryOsmosisGasPrice() {
+    return cachified({
+      key: "osmosis-gas-price",
+      cache: this._cache,
+      // 15 minutes
+      ttl: 15 * 60 * 1000,
+      getFreshValue: async () => {
+        const restEndpoint = this.chainGetter.getChain(
+          this.osmosisChainId
+        ).rest;
+        const result = await apiClient<{
+          base_fee: string;
+        }>(`${restEndpoint}/osmosis/txfees/v1beta1/cur_eip_base_fee`);
+
+        return {
+          baseFee: Number(result.base_fee),
+        };
+      },
+    });
   }
 }

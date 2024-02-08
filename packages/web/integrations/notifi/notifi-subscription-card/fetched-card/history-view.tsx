@@ -13,9 +13,9 @@ import IconButton from "~/components/buttons/icon-button";
 import { useTranslation } from "~/hooks";
 import { useWindowSize } from "~/hooks";
 import { useNotifiLocalStorage } from "~/integrations/notifi/hooks";
+import { DummyRow } from "~/integrations/notifi/hooks/use-history-detail-contents";
 import { useNotifiModalContext } from "~/integrations/notifi/notifi-modal-context";
 import {
-  DummyRow,
   HistoryRowData,
   HistoryRows,
 } from "~/integrations/notifi/notifi-subscription-card/fetched-card/history-rows";
@@ -105,7 +105,7 @@ export const HistoryView: FunctionComponent = () => {
         ids: [],
         beforeId: allNodes[0].id,
       })
-      .catch((e) => console.log("Failed to mark as read", e));
+      .catch((e) => console.error("Failed to mark as read", e));
   }, [allNodes]);
 
   const getNotificationHistory = useCallback(
@@ -196,7 +196,7 @@ export const HistoryView: FunctionComponent = () => {
       .then(() => {
         setAllNodes([]);
       })
-      .catch((e) => console.log("Failed to clear history", e));
+      .catch((e) => console.error("Failed to clear history", e));
   }, [client, allNodes]);
 
   return (

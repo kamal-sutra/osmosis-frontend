@@ -1,23 +1,25 @@
 import { ChainInfoInner } from "@osmosis-labs/keplr-stores";
-import {
-  ChainInfoWithExplorer,
-  DeliverTxResponse,
-  isSlippageError,
-  prettifyTxError,
-} from "@osmosis-labs/stores";
+import { DeliverTxResponse, isSlippageError } from "@osmosis-labs/stores";
+import type { AppCurrency, ChainInfoWithExplorer } from "@osmosis-labs/types";
 
 import { displayToast } from "~/components/alert/toast";
 import { ToastType } from "~/components/alert/types";
+
+import { prettifyTxError } from "./prettify";
+
+// Error code for timeout height reached in Cosmos SDK.
+// https://github.com/cosmos/cosmos-sdk/blob/8f6a94cd1f9f1c6bf1ad83a751da86270db92e02/types/errors/errors.go#L129
+const txTimeoutHeightReachedErrorCode = 30;
 
 export function toastOnBroadcastFailed(
   getChain: (chainId: string) => ChainInfoInner<ChainInfoWithExplorer>
 ) {
   return (chainId: string, e?: Error) => {
     let caption: string = "unknownError";
-    if (e instanceof Error || (e && "message" in e)) {
-      caption = e.message;
-    } else if (typeof e === "string") {
+    if (typeof e === "string") {
       caption = e;
+    } else if (e instanceof Error || (e && "message" in e)) {
+      caption = e.message;
     }
 
     displayToast(
@@ -52,10 +54,7 @@ export function toastOnFulfill(
       displayToast(
         {
           message: "transactionFailed",
-          caption: isSlippageError(tx)
-            ? "swapFailed"
-            : prettifyTxError(tx.rawLog ?? "", chainInfo.currencies) ??
-              tx.rawLog,
+          caption: getErrorMessage(tx, chainInfo.currencies),
         },
         ToastType.ERROR
       );
@@ -74,3 +73,14 @@ export function toastOnFulfill(
     }
   };
 }
+
+// gets the error message depending on the transaction.
+const getErrorMessage = (tx: DeliverTxResponse, currencies: AppCurrency[]) => {
+  if (tx.code === txTimeoutHeightReachedErrorCode) {
+    return "errors.txTimedOutError";
+  }
+
+  return isSlippageError(tx)
+    ? "swapFailed"
+    : prettifyTxError(tx.rawLog ?? "", currencies) ?? tx.rawLog;
+};

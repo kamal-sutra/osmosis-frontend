@@ -1,12 +1,10 @@
-import { DenomHelper } from "@keplr-wallet/common";
-import {
-  AppCurrency,
-  ChainInfo,
-  Currency,
-  IBCCurrency,
-} from "@keplr-wallet/types";
+import { Currency, IBCCurrency } from "@keplr-wallet/types";
 import { ChainStore } from "@osmosis-labs/keplr-stores";
-import { sha256 } from "sha.js";
+import type { AppCurrency, Asset, ChainInfo } from "@osmosis-labs/types";
+import {
+  getLastIbcTrace,
+  getSourceDenomFromAssetList,
+} from "@osmosis-labs/utils";
 
 type OriginChainCurrencyInfo = [
   string, // chain ID
@@ -31,58 +29,49 @@ export class UnsafeIbcCurrencyRegistrar<C extends ChainInfo = ChainInfo> {
 
   constructor(
     protected readonly chainStore: ChainStore<C>,
-    protected readonly ibcAssets: {
-      counterpartyChainId: string;
-      sourceChannelId: string;
-      coinMinimalDenom: string;
-      ibcTransferPathDenom?: string;
-    }[]
+    protected readonly assets: Asset[]
   ) {
     chainStore.addSetChainInfoHandler((chainInfoInner) => {
       chainInfoInner.registerCurrencyRegistrar(this.unsafeRegisterIbcCurrency);
     });
 
-    // calculate the hash based on the given IBC assets' channel id and coin minimal denom
+    // calculate the hash based on the given IBC assets' channel id and coin source denom
     // tutorial: https://tutorials.cosmos.network/tutorials/6-ibc-dev/
     const ibcCache = new Map<string, OriginChainCurrencyInfo>();
-    ibcAssets.forEach(
-      ({
-        counterpartyChainId,
-        sourceChannelId,
-        coinMinimalDenom,
-        ibcTransferPathDenom,
-      }) => {
-        const path = [{ portId: "transfer", channelId: sourceChannelId }];
+    assets
+      .filter((asset) =>
+        asset.traces.some(
+          (trace) => trace.type === "ibc" || trace.type === "ibc-cw20"
+        )
+      ) // Filter Osmosis assets
+      .forEach((ibcAsset) => {
+        const ibcTrace = getLastIbcTrace(ibcAsset.traces);
+        const ibcDenom = ibcAsset.base; // The IBC denom will also be the multihop hash when needed
 
-        // multihop IBC
-        if (ibcTransferPathDenom) {
-          const ibcDenom = makeIBCMinimalDenom(
-            sourceChannelId,
-            ibcTransferPathDenom
+        if (!ibcTrace) {
+          throw new Error(
+            `Invalid IBC asset config: ${JSON.stringify(ibcAsset)}`
           );
-          path.push({
+        }
+
+        const sourceDenom = getSourceDenomFromAssetList(ibcAsset);
+
+        const channels = ibcTrace.chain.path.match(/channel-(\d+)/g);
+        const paths = [];
+
+        if (!channels) {
+          throw new Error(`Invalid IBC path ${ibcTrace.chain.path}`);
+        }
+
+        for (const channel of channels) {
+          paths.push({
             portId: "transfer",
-            channelId: ibcTransferPathDenom.split("/")[1],
+            channelId: channel,
           });
-          ibcCache.set(ibcDenom, [counterpartyChainId, coinMinimalDenom, path]);
-          return;
         }
 
-        if (coinMinimalDenom.startsWith("ibc/")) {
-          ibcCache.set(coinMinimalDenom, [
-            counterpartyChainId,
-            coinMinimalDenom,
-            path,
-          ]);
-          return;
-        }
-
-        // compute the hash locally
-        const ibcDenom = DenomHelper.ibcDenom(path, coinMinimalDenom);
-
-        ibcCache.set(ibcDenom, [counterpartyChainId, coinMinimalDenom, path]);
-      }
-    );
+        ibcCache.set(ibcDenom, [ibcAsset.origin_chain_id, sourceDenom, paths]);
+      });
 
     this._configuredIbcHashToOriginChainAndCoinMinimalDenom = ibcCache;
   }
@@ -135,21 +124,3 @@ export class UnsafeIbcCurrencyRegistrar<C extends ChainInfo = ChainInfo> {
     }
   };
 }
-
-export function makeIBCMinimalDenom(
-  sourceChannelId: string,
-  coinMinimalDenom: string
-): string {
-  return (
-    "ibc/" +
-    Buffer.from(
-      sha256_fn(Buffer.from(`transfer/${sourceChannelId}/${coinMinimalDenom}`))
-    )
-      .toString("hex")
-      .toUpperCase()
-  );
-}
-
-const sha256_fn = (data: Uint8Array): Uint8Array => {
-  return new Uint8Array(new sha256().update(data).digest());
-};

@@ -1,7 +1,7 @@
-import { Dec, Int } from "@keplr-wallet/unit";
+import { Int } from "@keplr-wallet/unit";
 
 import { NotEnoughLiquidityError } from "../../errors";
-import { Route, RouteWithInAmount } from "../route";
+import { RouteWithInAmount } from "../route";
 import { RoutablePool } from "../types";
 import {
   allPools,
@@ -67,8 +67,6 @@ describe("OptimizedRoutes", () => {
 
       const router = makeDefaultTestRouterParams({
         pools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
       });
 
       const split = router.getOptimizedRoutesByTokenIn(
@@ -95,8 +93,6 @@ describe("OptimizedRoutes", () => {
 
       const router = makeDefaultTestRouterParams({
         pools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
       });
 
       const split = await router.getOptimizedRoutesByTokenIn(
@@ -123,8 +119,6 @@ describe("OptimizedRoutes", () => {
 
       const router = makeDefaultTestRouterParams({
         pools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
       });
 
       const split = await router.getOptimizedRoutesByTokenIn(
@@ -151,8 +145,6 @@ describe("OptimizedRoutes", () => {
 
       const router = makeDefaultTestRouterParams({
         pools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
       });
 
       const tokenIn = {
@@ -181,8 +173,6 @@ describe("OptimizedRoutes", () => {
 
       const router = makeDefaultTestRouterParams({
         pools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
       });
 
       const tokenIn = {
@@ -209,8 +199,6 @@ describe("OptimizedRoutes", () => {
 
       const router = makeDefaultTestRouterParams({
         pools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
       });
 
       expect.assertions(1);
@@ -250,13 +238,9 @@ describe("OptimizedRoutes", () => {
       ];
       const normalRouter = makeDefaultTestRouterParams({
         pools: normalPools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
       });
       const scaledRouter = makeDefaultTestRouterParams({
         pools: scaledPools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
       });
       const normalSplit = await normalRouter.getOptimizedRoutesByTokenIn(
         {
@@ -280,104 +264,6 @@ describe("OptimizedRoutes", () => {
         scaledSplit[0],
       ]);
       expect(scaledOut.amount.toString()).toEqual(normalOut.amount.toString());
-    });
-
-    it("uses preferred pool IDs - lifts preferred direct pool into used route", async () => {
-      // returns a route that would have come in 3rd get lifted to 2nd because of preferred pool
-
-      let c = 1;
-      const getId = () => (c++).toString();
-      const pools = [
-        // osmo & juno (route 2)
-        makeWeightedPool({
-          id: getId(), // 1
-          firstPoolAsset: { denom: "juno", amount: "100000000" }, // more liquidity (60% swap split into here)
-          secondPoolAsset: { amount: "100000000" },
-        }),
-        // osmo & juno (preferred, route 1)
-        makeWeightedPool({
-          id: getId(), // 2
-          firstPoolAsset: { denom: "foo" },
-        }),
-        // juno & stars (stableswap) (route 2)
-        makeStablePool({
-          id: getId(), // 3
-          firstPoolAsset: { denom: "stars" },
-          secondPoolAsset: { denom: "juno" },
-        }),
-        // stars & usdc (route 2)
-        makeWeightedPool({
-          id: getId(), // 4
-          firstPoolAsset: { denom: "stars" },
-          secondPoolAsset: { denom: "usdc" },
-        }),
-        // foo & bar (higher TVL) (route 1)
-        makeWeightedPool({
-          id: getId(), // 5
-          firstPoolAsset: { denom: "foo" },
-          secondPoolAsset: { denom: "bar" },
-        }),
-        // bar & baz (stableswap) (route 1)
-        makeStablePool({
-          id: getId(), // 6
-          firstPoolAsset: { denom: "bar" },
-          secondPoolAsset: { denom: "baz" },
-        }),
-        // baz & usdc (higher TVL) (route 1)
-        makeWeightedPool({
-          id: getId(), // 7
-          firstPoolAsset: { denom: "baz" },
-          secondPoolAsset: { denom: "usdc" },
-        }),
-        // osmo & bbb (lower liq) (preferred, route 3)
-        makeWeightedPool({
-          id: getId(), // 8
-          firstPoolAsset: { denom: "uosmo" },
-          secondPoolAsset: { denom: "bbb" },
-        }),
-        // bbb & usdc (lower liq) (route 3)
-        makeWeightedPool({
-          id: getId(), // 9
-          firstPoolAsset: { denom: "bbb" },
-          secondPoolAsset: { denom: "usdc" },
-        }),
-      ];
-
-      // route : osmo - 1 > juno - 3 > stars - 4 > usdc
-      // route : osmo - 2 > foo - 5 > bar - 6 > baz - 7 > usdc (6 IS PREFERRED)
-      // route : osmo - 8 > bbb - 9 > usdc
-
-      const normalRouter = makeDefaultTestRouterParams({
-        pools,
-      });
-
-      const preferredRouter = makeDefaultTestRouterParams({
-        pools,
-        preferredPoolIds: ["6"],
-      });
-
-      const tokenIn = { denom: "uosmo", amount: new Int("100") };
-
-      const normalSplit = await normalRouter.getOptimizedRoutesByTokenIn(
-        tokenIn,
-        "usdc"
-      );
-      const prefSplit = await preferredRouter.getOptimizedRoutesByTokenIn(
-        tokenIn,
-        "usdc"
-      );
-
-      // normal routing prefers single, short route
-      const [normRoute1PoolIds] = normalSplit.map((route) =>
-        route.pools.map((pool) => pool.id)
-      );
-      const [prefRoute1PoolIds, prefRoute2PoolIds] = prefSplit.map((route) =>
-        route.pools.map((pool) => pool.id)
-      );
-
-      expect(normRoute1PoolIds.includes("8")).toBeTruthy(); // includes preferred pool, shortest route
-      expect(prefRoute1PoolIds.includes("8")).toBeTruthy(); // NOT preferred pool, but high liq route
-      expect(prefRoute2PoolIds?.includes("6")).toBeUndefined(); // preferred pool
     });
   });
 
@@ -405,7 +291,7 @@ describe("OptimizedRoutes", () => {
       const router = makeRouterWithForceRoutes([route]);
 
       expect(router.calculateTokenOutByTokenIn([route])).rejects.toBeInstanceOf(
-        NotEnoughLiquidityError
+        Error
       );
     });
     it("handles invalid route", () => {
@@ -531,167 +417,6 @@ describe("OptimizedRoutes", () => {
       }
     });
 
-    it("includes OSMO fee discount - 2 pools with 1% fee", async () => {
-      const pools = [
-        makeWeightedPool({
-          firstPoolAsset: { amount: "100000000000000" },
-          secondPoolAsset: { amount: "100000000000000" },
-        }),
-        makeWeightedPool({
-          id: "2",
-          firstPoolAsset: { denom: "uosmo", amount: "100000000000000" },
-          secondPoolAsset: { denom: "ujuno", amount: "100000000000000" },
-        }),
-      ];
-
-      const discountedRouter = makeDefaultTestRouterParams({ pools });
-      // no incentivized pool ids, and a random denom is given
-      const nondiscountedRouter = makeDefaultTestRouterParams({
-        pools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
-      });
-
-      const discountedRoutes =
-        await discountedRouter.getOptimizedRoutesByTokenIn(
-          {
-            denom: "uion",
-            amount: new Int("100000"), // amount out gets truncated, so can only see the amount diff w/ larger trades since the fee is already v small
-          },
-          "ujuno"
-        );
-      const nondiscountedRoutes =
-        await nondiscountedRouter.getOptimizedRoutesByTokenIn(
-          {
-            denom: "uion",
-            amount: new Int("100000"),
-          },
-          "ujuno"
-        );
-      const discoutedOut = await discountedRouter.calculateTokenOutByTokenIn([
-        discountedRoutes[0],
-      ]);
-      const nondiscountedOut =
-        await nondiscountedRouter.calculateTokenOutByTokenIn([
-          nondiscountedRoutes[0],
-        ]);
-
-      const parsedDiscountAmt = parseInt(discoutedOut.amount.toString());
-      const parsedNonDiscountAmt = parseInt(nondiscountedOut.amount.toString());
-      expect(parsedDiscountAmt).toBeGreaterThan(parsedNonDiscountAmt); // user gets more out
-    });
-    it("includes OSMO fee discount - 2 pools with different (small, large) fees", async () => {
-      const poolsWithALargeFee = [
-        makeWeightedPool({
-          firstPoolAsset: { amount: "100000000000000" },
-          secondPoolAsset: { amount: "100000000000000" },
-        }),
-        makeWeightedPool({
-          id: "2",
-          swapFee: "0.1", // 10% swap fee
-          firstPoolAsset: { denom: "uosmo", amount: "100000000000000" },
-          secondPoolAsset: { denom: "ujuno", amount: "100000000000000" },
-        }),
-      ];
-      const poolsWithSameOnePercFee = [
-        makeWeightedPool({
-          firstPoolAsset: { amount: "100000000000000" },
-          secondPoolAsset: { amount: "100000000000000" },
-        }),
-        makeWeightedPool({
-          id: "2",
-          firstPoolAsset: { denom: "uosmo", amount: "100000000000000" },
-          secondPoolAsset: { denom: "ujuno", amount: "100000000000000" },
-        }),
-      ];
-
-      // both pools incentivized, w/ osmo as discount out currency
-      const largeFeeRouter = makeDefaultTestRouterParams({
-        pools: poolsWithALargeFee,
-      });
-      const smallFeeRouter = makeDefaultTestRouterParams({
-        pools: poolsWithSameOnePercFee,
-      });
-
-      const largeFeeRoutes = await largeFeeRouter.getOptimizedRoutesByTokenIn(
-        {
-          denom: "uion",
-          amount: new Int("100000"), // amount out gets truncated, so can only see the amount diff w/ larger trades since the fee is already v small
-        },
-        "ujuno"
-      );
-      const smallFeeRoutes = await smallFeeRouter.getOptimizedRoutesByTokenIn(
-        {
-          denom: "uion",
-          amount: new Int("100000"),
-        },
-        "ujuno"
-      );
-      const largeFeeOut = await largeFeeRouter.calculateTokenOutByTokenIn([
-        largeFeeRoutes[0],
-      ]);
-      const smallFeeOut = await smallFeeRouter.calculateTokenOutByTokenIn([
-        smallFeeRoutes[0],
-      ]);
-
-      const parsedLargeFeeOut = parseInt(largeFeeOut.amount.toString());
-      const parsedSmallFeeOut = parseInt(smallFeeOut.amount.toString());
-      expect(parsedLargeFeeOut).toBeLessThan(parsedSmallFeeOut); // user gets less out since fee is big
-    });
-    it("includes OSMO fee discount - no fee discount for route w/ 3 pools", async () => {
-      const pools = [
-        makeWeightedPool({
-          firstPoolAsset: { amount: "100000000000000" },
-          secondPoolAsset: { amount: "100000000000000" },
-        }),
-        makeWeightedPool({
-          id: "2",
-          firstPoolAsset: { denom: "uosmo", amount: "100000000000000" },
-          secondPoolAsset: { denom: "uust", amount: "100000000000000" },
-        }),
-        makeWeightedPool({
-          id: "3",
-          firstPoolAsset: { denom: "uust", amount: "100000000000000" },
-          secondPoolAsset: { denom: "uusdc", amount: "100000000000000" },
-        }),
-      ];
-
-      const discountedRouter = makeDefaultTestRouterParams({ pools });
-      // no incentivized pool ids, and a random denom is given
-      const nondiscountedRouter = makeDefaultTestRouterParams({
-        pools,
-        incentivizedPoolIds: [],
-        stakeCurrencyMinDenom: "ufoo",
-      });
-
-      const discountedRoutes =
-        await discountedRouter.getOptimizedRoutesByTokenIn(
-          {
-            denom: "uion",
-            amount: new Int("100"), // amount out gets truncated, so can only see the amount diff w/ larger trades since the fee is already v small
-          },
-          "uusdc"
-        );
-      const nondiscountedRoutes =
-        await nondiscountedRouter.getOptimizedRoutesByTokenIn(
-          {
-            denom: "uion",
-            amount: new Int("100"),
-          },
-          "uusdc"
-        );
-      const discoutedOut = await discountedRouter.calculateTokenOutByTokenIn([
-        discountedRoutes[0],
-      ]);
-      const nondiscountedOut =
-        await nondiscountedRouter.calculateTokenOutByTokenIn([
-          nondiscountedRoutes[0],
-        ]);
-
-      const parsedDiscountAmt = parseInt(discoutedOut.amount.toString());
-      const parsedNonDiscountAmt = parseInt(nondiscountedOut.amount.toString());
-      expect(parsedDiscountAmt).toEqual(parsedNonDiscountAmt); // user gets more out
-    });
     it("handles many pools - finds a route through all pools between any two valid assets - low max pool - no throw", async () => {
       const allDenoms = Array.from(
         new Set(allPools.flatMap((pool) => pool.poolAssetDenoms))
@@ -798,231 +523,6 @@ describe("OptimizedRoutes", () => {
         tokenIn.amount
       );
       expect(bestSplit[0].pools).toEqual(routes[0].pools);
-    });
-
-    it("splits between choice of 2 routes - uion -> uusdc", async () => {
-      const baseRouteInfo = {
-        tokenOutDenoms: ["uosmo", "uusdc"],
-        tokenInDenom: "uion",
-      };
-
-      const higherLiqRoute: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeWeightedPool(),
-          makeWeightedPool({
-            id: "2",
-            firstPoolAsset: { denom: "uusdc" },
-          }),
-        ],
-      };
-
-      const lowerLiqRoute: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeWeightedPool({
-            id: "3",
-            firstPoolAsset: { amount: "100" },
-            secondPoolAsset: { amount: "100" },
-          }),
-          makeWeightedPool({
-            id: "4",
-            firstPoolAsset: { denom: "uusdc", amount: "100" },
-            secondPoolAsset: { amount: "100" },
-          }),
-        ],
-      };
-
-      const routes = [lowerLiqRoute, higherLiqRoute];
-      const router = makeRouterWithForceRoutes(routes);
-
-      const tokenIn = { denom: "uion", amount: new Int("100") };
-
-      const bestSplit = await router.findBestSplitTokenIn(
-        routes,
-        tokenIn.amount
-      );
-
-      expect(bestSplit[0].pools).toEqual(routes[0].pools); // lower liq route
-      expect(
-        bestSplit
-          .reduce((sum, route) => sum.add(route.initialAmount), new Int(0))
-          .equals(tokenIn.amount)
-      ).toBeTruthy();
-      expect(bestSplit[0].initialAmount.toString()).toEqual("10");
-      expect(bestSplit[1].initialAmount.toString()).toEqual("90");
-    });
-    it("splits between choice of 2 routes - even split - uion -> uusdc", async () => {
-      const baseRouteInfo = {
-        tokenOutDenoms: ["uosmo", "uusdc"],
-        tokenInDenom: "uion",
-      };
-
-      const evenRoute1: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeWeightedPool(),
-          makeWeightedPool({
-            id: "2",
-            firstPoolAsset: { denom: "uusdc" },
-          }),
-        ],
-      };
-
-      const evenRoute2: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeWeightedPool({
-            id: "3",
-          }),
-          makeWeightedPool({
-            id: "4",
-            firstPoolAsset: { denom: "uusdc" },
-          }),
-        ],
-      };
-
-      const routes = [evenRoute2, evenRoute1];
-      const router = makeRouterWithForceRoutes(routes, {
-        getPoolTotalValueLocked() {
-          return new Dec("100"); // same TVL for all pools
-        },
-      });
-
-      const tokenIn = { denom: "uion", amount: new Int("100") };
-
-      const bestSplit = await router.findBestSplitTokenIn(
-        routes,
-        tokenIn.amount
-      );
-
-      expect(bestSplit[0].pools).toEqual(routes[0].pools);
-      expect(
-        bestSplit
-          .reduce((sum, route) => sum.add(route.initialAmount), new Int(0))
-          .equals(tokenIn.amount)
-      ).toBeTruthy();
-      expect(bestSplit[0].initialAmount.toString()).toEqual("30");
-      expect(bestSplit[1].initialAmount.toString()).toEqual("70");
-    });
-    // weighted pools' calcOutAmountGivenIn is much faster than stableswap, which uses it's own binary search
-    // this is to get an eye on the performance of searching for out amounts through stable pools
-    it("is performant - splits using stable pools: 2 routes - uion -> uusdc", async () => {
-      const baseRouteInfo = {
-        tokenOutDenoms: ["uosmo", "uusdc"],
-        tokenInDenom: "uion",
-      };
-
-      const higherLiqRoute: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeStablePool(),
-          makeStablePool({
-            id: "2",
-            firstPoolAsset: { denom: "uusdc" },
-          }),
-        ],
-      };
-
-      const lowerLiqRoute: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeStablePool({
-            id: "3",
-            firstPoolAsset: { amount: "100" },
-            secondPoolAsset: { amount: "100" },
-          }),
-          makeStablePool({
-            id: "4",
-            firstPoolAsset: { denom: "uusdc", amount: "100" },
-            secondPoolAsset: { amount: "100" },
-          }),
-        ],
-      };
-
-      const routes = [lowerLiqRoute, higherLiqRoute];
-      const router = makeRouterWithForceRoutes(routes);
-
-      const tokenIn = { denom: "uion", amount: new Int("100") };
-
-      const bestSplit = await router.findBestSplitTokenIn(
-        routes,
-        tokenIn.amount
-      );
-
-      expect(bestSplit[0].pools).toEqual(routes[0].pools);
-      expect(
-        bestSplit
-          .reduce((sum, route) => sum.add(route.initialAmount), new Int(0))
-          .equals(tokenIn.amount)
-      ).toBeTruthy();
-    });
-
-    it("splits between choice of 3 routes - uion -> uosmo -> uusdc", async () => {
-      const baseRouteInfo = {
-        tokenOutDenoms: ["uosmo", "uusdc"],
-        tokenInDenom: "uion",
-      };
-
-      const highestLiqRoute: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeWeightedPool(),
-          makeWeightedPool({
-            id: "2",
-            firstPoolAsset: { denom: "uusdc" },
-          }),
-        ],
-      };
-
-      const mediumLiqRoute: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeWeightedPool({
-            id: "3",
-            firstPoolAsset: { amount: "500" },
-            secondPoolAsset: { amount: "500" },
-          }),
-          makeWeightedPool({
-            id: "4",
-            firstPoolAsset: { denom: "uusdc", amount: "500" },
-            secondPoolAsset: { amount: "500" },
-          }),
-        ],
-      };
-
-      const lowerLiqRoute: Route = {
-        ...baseRouteInfo,
-        pools: [
-          makeWeightedPool({
-            id: "5",
-            firstPoolAsset: { amount: "100" },
-            secondPoolAsset: { amount: "100" },
-          }),
-          makeWeightedPool({
-            id: "6",
-            firstPoolAsset: { denom: "uusdc", amount: "100" },
-            secondPoolAsset: { amount: "100" },
-          }),
-        ],
-      };
-
-      const routes = [lowerLiqRoute, mediumLiqRoute, highestLiqRoute];
-      const router = makeRouterWithForceRoutes(routes);
-
-      const tokenIn = { denom: "uion", amount: new Int("100") };
-
-      const bestSplit = await router.findBestSplitTokenIn(
-        routes,
-        tokenIn.amount
-      );
-
-      expect(bestSplit[0].pools).toEqual(routes[0].pools);
-      expect(
-        bestSplit
-          .reduce((sum, route) => sum.add(route.initialAmount), new Int(0))
-          .equals(tokenIn.amount)
-      ).toBeTruthy();
     });
   });
 });

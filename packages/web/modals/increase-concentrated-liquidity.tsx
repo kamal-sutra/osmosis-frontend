@@ -1,8 +1,5 @@
 import { Dec } from "@keplr-wallet/unit";
-import {
-  ObservableAddConcentratedLiquidityConfig,
-  ObservableQueryLiquidityPositionById,
-} from "@osmosis-labs/stores";
+import { ObservableQueryLiquidityPositionById } from "@osmosis-labs/stores";
 import { observer } from "mobx-react-lite";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -13,10 +10,11 @@ import { MyPositionStatus } from "~/components/cards/my-position/status";
 import { PriceChartHeader } from "~/components/chart/token-pair-historical";
 import { DepositAmountGroup } from "~/components/cl-deposit-input-group";
 import { tError } from "~/components/localization";
-import { useTranslation } from "~/hooks";
 import {
+  ObservableAddConcentratedLiquidityConfig,
   useAddConcentratedLiquidityConfig,
   useConnectWalletModalRedirect,
+  useTranslation,
 } from "~/hooks";
 import { useHistoricalAndLiquidityData } from "~/hooks/ui-config/use-historical-and-depth-data";
 import { ModalBase, ModalBaseProps } from "~/modals/base";
@@ -77,9 +75,7 @@ export const IncreaseConcentratedLiquidityModal: FunctionComponent<
     {
       disabled: config.error !== undefined || isSendingMsg,
       onClick: () => {
-        increaseLiquidity(props.position.id).finally(() =>
-          props.onRequestClose()
-        );
+        increaseLiquidity(props.position.id).then(() => props.onRequestClose());
       },
       children: config.error
         ? t(...tError(config.error))
@@ -124,7 +120,7 @@ export const IncreaseConcentratedLiquidityModal: FunctionComponent<
             />
           )}
         </div>
-        <div className="mb-2 flex justify-between rounded-[12px] bg-osmoverse-700 py-3 px-5 text-osmoverse-100 xs:flex-wrap xs:gap-y-2 xs:px-3">
+        <div className="mb-2 flex justify-between rounded-xl bg-osmoverse-700 py-3 px-5 text-osmoverse-100 xs:flex-wrap xs:gap-y-2 xs:px-3">
           {baseAsset && (
             <div className="flex items-center gap-2 text-subtitle1 font-subtitle1 xs:text-body2">
               {baseAsset.currency.coinImageUrl && (

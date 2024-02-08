@@ -1,9 +1,5 @@
 import { CoinPretty, Dec, DecUtils, PricePretty } from "@keplr-wallet/unit";
-import {
-  ObservableAddConcentratedLiquidityConfig,
-  ObservableQueryPool,
-  QuasarVault,
-} from "@osmosis-labs/stores";
+import { ObservableQueryPool, QuasarVault } from "@osmosis-labs/stores";
 import classNames from "classnames";
 import debounce from "debounce";
 import { observer } from "mobx-react-lite";
@@ -30,11 +26,14 @@ import {
 import { DepositAmountGroup } from "~/components/cl-deposit-input-group";
 import { Pill } from "~/components/indicators/pill";
 import { InputBox } from "~/components/input";
-import Spinner from "~/components/spinner";
+import Spinner from "~/components/loaders/spinner";
 import { CustomClasses } from "~/components/types";
 import { EventName } from "~/config";
-import { useTranslation } from "~/hooks";
-import { useAmplitudeAnalytics } from "~/hooks";
+import {
+  ObservableAddConcentratedLiquidityConfig,
+  useAmplitudeAnalytics,
+  useTranslation,
+} from "~/hooks";
 import { useHistoricalAndLiquidityData } from "~/hooks/ui-config/use-historical-and-depth-data";
 import { useStore } from "~/stores";
 import { ObservableHistoricalAndLiquidityData } from "~/stores/derived-data";
@@ -169,7 +168,7 @@ const Overview: FunctionComponent<
           />
         </div>
       </div>
-      <div className="flex rounded-[1rem] bg-osmoverse-700/[.3] px-[28px] py-4 md:flex-col md:items-center md:gap-2 xs:items-start">
+      <div className="flex rounded-2xl bg-osmoverse-700/[.3] px-[28px] py-4 md:flex-col md:items-center md:gap-2 xs:items-start">
         <div className="flex flex-1 flex-col gap-1">
           <div className="flex flex-nowrap items-center gap-2">
             {pool && (
@@ -202,20 +201,20 @@ const Overview: FunctionComponent<
         <div className="flex items-center gap-10 xs:flex-wrap xs:gap-y-4 xs:gap-x-6">
           <div className="gap-[3px]">
             <span className="body2 text-osmoverse-400">
-              {t("pool.liquidity")}
-            </span>
-            <h6 className="text-osmoverse-100">
-              {pool?.computeTotalValueLocked(priceStore).toString()}
-            </h6>
-          </div>
-          <div className="gap-[3px]">
-            <span className="body2 text-osmoverse-400">
               {t("pool.24hrTradingVolume")}
             </span>
             <h6 className="text-osmoverse-100">
               {queryPoolFeeMetrics
                 .getPoolFeesMetrics(addLiquidityConfig.poolId, priceStore)
                 .volume24h.toString()}
+            </h6>
+          </div>
+          <div className="gap-[3px]">
+            <span className="body2 text-osmoverse-400">
+              {t("pool.liquidity")}
+            </span>
+            <h6 className="text-osmoverse-100">
+              {pool?.computeTotalValueLocked(priceStore).toString()}
             </h6>
           </div>
           <div className="gap-[3px]">
@@ -285,7 +284,7 @@ const StrategySelector: FunctionComponent<{
   return (
     <div
       className={classNames(
-        "flex flex-1 flex-col items-center justify-center gap-4 rounded-[20px] bg-osmoverse-700/[.6] p-[2px]",
+        "flex flex-1 flex-col items-center justify-center gap-4 rounded-2xl bg-osmoverse-700/[.6] p-[2px]",
         {
           "bg-supercharged": selected,
           "cursor-pointer hover:bg-supercharged": onClick,
@@ -295,7 +294,7 @@ const StrategySelector: FunctionComponent<{
     >
       <div
         className={classNames(
-          "flex h-full w-full flex-col items-center justify-center gap-[20px] rounded-[19px] py-8 px-4",
+          "flex h-full w-full flex-col items-center justify-center gap-[20px] rounded-2xl py-8 px-4",
           {
             "bg-osmoverse-700": Boolean(onClick),
           }
@@ -314,7 +313,7 @@ const StrategySelector: FunctionComponent<{
           src={imgSrc}
           width={354}
           height={180}
-          className="rounded-[1rem]"
+          className="!rounded-2xl"
         />
         <div className="body2 text-center text-osmoverse-200">
           {description}
@@ -416,7 +415,7 @@ const AddConcLiqView: FunctionComponent<
         </span>
         <div className="flex w-full gap-1">
           <div className="flex h-[20.1875rem] flex-grow flex-col gap-[20px] rounded-l-2xl bg-osmoverse-700 py-7 pl-6 md:hidden">
-            {chartConfig.queryTokenPairPrice.isFetching ? (
+            {chartConfig.isHistoricalDataLoading ? (
               <Spinner className="m-auto" />
             ) : chartConfig.historicalChartUnavailable ? (
               <ChartUnavailable />
@@ -546,7 +545,8 @@ const AddConcLiqView: FunctionComponent<
           {t("addConcentratedLiquidity.amountToDeposit")}
           {superfluidPoolDetail.isSuperfluid && (
             <CheckBox
-              className="transition-all after:!h-6 after:!w-6 after:!rounded-[10px] after:!border-2 after:!border-superfluid after:!bg-transparent checked:after:border-none checked:after:bg-superfluid"
+              borderStyles="border-superfluid"
+              backgroundStyles="bg-superfluid"
               isOn={shouldBeSuperfluidStaked}
               onToggle={() => {
                 setElectSuperfluidStaking(!shouldBeSuperfluidStaked);
@@ -633,8 +633,6 @@ const AddConcLiqManaged: FunctionComponent<
 
   if (!fiat) throw new Error("Could not find fiat currency from price store.");
 
-  console.log(quasarVaults);
-
   return (
     <>
       <div className="align-center relative flex flex-row xs:items-center xs:gap-4">
@@ -665,7 +663,7 @@ const AddConcLiqManaged: FunctionComponent<
               target="_blank"
               rel="noreferrer"
             >
-              <div className="grid cursor-pointer grid-cols-4 items-center rounded-[1rem] border border-transparent bg-osmoverse-700 p-3 transition-all hover:border-wosmongton-200 ">
+              <div className="grid cursor-pointer grid-cols-4 items-center rounded-2xl border border-transparent bg-osmoverse-700 p-3 transition-all hover:border-wosmongton-200 ">
                 <div className="col-span-3 flex items-center gap-4">
                   <Image
                     alt="quasar-provider"
@@ -866,6 +864,13 @@ const PresetStrategyCard: FunctionComponent<
     } = addLiquidityConfig;
     const { logEvent } = useAmplitudeAnalytics();
 
+    /** Disabled of aggressive price range is the same.
+     *  This can happen with pools with pegged currencies with very concentrated liq. */
+    const disabled =
+      "moderate" === type &&
+      aggressivePriceRange[0].equals(moderatePriceRange[0]) &&
+      aggressivePriceRange[1].equals(moderatePriceRange[1]);
+
     const isSelected = type === currentStrategy;
 
     const updateInputAndRangeMinMax = useCallback(
@@ -916,12 +921,16 @@ const PresetStrategyCard: FunctionComponent<
       }
     };
 
+    // not an option
+    if (disabled) return null;
+
     return (
       <div
         className={classNames(
           "flex w-[114px] cursor-pointer items-center justify-center gap-2 rounded-2xl p-[2px] hover:bg-supercharged",
           {
             "bg-supercharged": isSelected,
+            "cursor-not-allowed opacity-30": disabled,
           },
           className
         )}
@@ -968,6 +977,18 @@ const PriceInputBox: FunctionComponent<{
   const isFullRange =
     forPriceIndex === 1 && addConcLiquidityConfig.fullRange && !isFocused;
 
+  /** to allow decimals, display the raw string value while typing
+   otherwise, display the nearest tick rounded price. 
+    All values have currency decimals adjusted for display. */
+  const currentValue = isFocused
+    ? addConcLiquidityConfig.rangeRaw[forPriceIndex]
+    : formatPretty(
+        addConcLiquidityConfig.rangeWithCurrencyDecimals[forPriceIndex],
+        {
+          maxDecimals: 8,
+        }
+      );
+
   return (
     <div className="flex w-full max-w-[9.75rem] flex-col items-end overflow-clip rounded-xl bg-osmoverse-800 px-2 focus-within:bg-osmoverse-900">
       <span className="caption px-2 pt-2 text-osmoverse-400">{label}</span>
@@ -982,7 +1003,8 @@ const PriceInputBox: FunctionComponent<{
         </div>
       ) : (
         <InputBox
-          className="border-0 bg-transparent text-subtitle1 leading-tight"
+          className="bg-transparent text-subtitle1 leading-tight"
+          style="no-border"
           type="number"
           rightEntry
           inputRef={inputRef}
@@ -991,20 +1013,7 @@ const PriceInputBox: FunctionComponent<{
             !isFullRange &&
             addConcLiquidityConfig.currentStrategy === null
           }
-          currentValue={
-            // to allow decimals, display the raw string value while typing
-            // otherwise, display the nearest tick rounded price
-            isFocused
-              ? addConcLiquidityConfig.rangeRaw[forPriceIndex]
-              : formatPretty(
-                  addConcLiquidityConfig.rangeWithCurrencyDecimals[
-                    forPriceIndex
-                  ],
-                  {
-                    maxDecimals: 8,
-                  }
-                )
-          }
+          currentValue={currentValue}
           onFocus={() => setIsFocused(true)}
           onInput={(val) =>
             forPriceIndex === 0

@@ -6,8 +6,8 @@ import Image from "next/image";
 import { FunctionComponent, useEffect, useState } from "react";
 
 import { Button } from "~/components/buttons";
-import { Breakpoint, CustomClasses } from "~/components/types";
-import { useTranslation } from "~/hooks";
+import { CustomClasses } from "~/components/types";
+import { Breakpoint, useTranslation } from "~/hooks";
 import { useWindowSize } from "~/hooks";
 import { useStore } from "~/stores";
 
@@ -63,7 +63,7 @@ export const PoolsOverview: FunctionComponent<
   return (
     <div
       className={classNames(
-        "relative flex flex-wrap items-center gap-32 rounded-[32px] bg-osmoverse-800 px-20 py-8 1.5lg:gap-6 lg:px-10 md:h-fit md:flex-col md:items-start md:gap-3 md:px-4 md:py-5",
+        "relative flex flex-wrap items-center gap-32 rounded-3xl bg-osmoverse-800 px-20 py-8 1.5lg:gap-6 lg:px-10 md:h-fit md:flex-col md:items-start md:gap-3 md:px-4 md:py-5",
         className
       )}
     >
@@ -89,19 +89,19 @@ export const PoolsOverview: FunctionComponent<
           src="/images/lab-machine.svg"
           className="h-full"
           height={
-            width < Breakpoint.MD
+            width < Breakpoint.md
               ? 100
-              : width < Breakpoint.XLHALF
-              ? width < Breakpoint.XL
+              : width < Breakpoint.xlhalf
+              ? width < Breakpoint.xl
                 ? 190
                 : 200
               : 212
           }
           width={
-            width < Breakpoint.MD
+            width < Breakpoint.md
               ? 180
-              : width < Breakpoint.XLHALF
-              ? width < Breakpoint.XL
+              : width < Breakpoint.xlhalf
+              ? width < Breakpoint.xl
                 ? 280
                 : 380
               : 425

@@ -7,13 +7,16 @@ import {
   ObservablePoolsBonding,
   ObservableQueryActiveGauges,
   ObservableQueryPool,
+  ObservableQueryPoolAprs,
   ObservableQueryPoolFeesMetrics,
+  ObservableQueryPriceRangeAprs,
   ObservableSharePoolDetails,
   OsmosisQueries,
 } from "@osmosis-labs/stores";
 import { action, computed, makeObservable, observable } from "mobx";
 import { computedFn } from "mobx-utils";
 
+import { IS_TESTNET } from "~/config";
 import { ObservableVerifiedPoolsStoreMap } from "~/stores/derived-data/pools/verified";
 import { UnverifiedAssetsState, UserSettings } from "~/stores/user-settings";
 
@@ -30,6 +33,8 @@ export class ObservablePoolWithMetric {
     protected readonly externalQueries: {
       queryPoolFeeMetrics: ObservableQueryPoolFeesMetrics;
       queryActiveGauges: ObservableQueryActiveGauges;
+      queryPriceRangeAprs: ObservableQueryPriceRangeAprs;
+      queryPoolAprs: ObservableQueryPoolAprs;
     },
     protected readonly priceStore: IPriceStore
   ) {
@@ -89,17 +94,11 @@ export class ObservablePoolWithMetric {
       .join(" ");
   }
 
+  @computed
   get apr() {
-    if (this.concentratedPoolDetail) {
-      return this.concentratedPoolDetail.fullRangeApr.maxDecimals(0);
-    }
-
     return (
-      this.poolsBonding
-        .get(this.queryPool.id)
-        ?.highestBondDuration?.aggregateApr.maxDecimals(0) ??
-      this.sharePoolDetail?.swapFeeApr.maxDecimals(0) ??
-      new RatePretty(0)
+      this.externalQueries.queryPoolAprs.getForPool(this.queryPool.id)
+        ?.totalApr ?? new RatePretty(0)
     );
   }
 
@@ -135,6 +134,8 @@ export class ObservablePoolsWithMetric {
     protected readonly externalQueries: {
       queryPoolFeeMetrics: ObservableQueryPoolFeesMetrics;
       queryActiveGauges: ObservableQueryActiveGauges;
+      queryPriceRangeAprs: ObservableQueryPriceRangeAprs;
+      queryPoolAprs: ObservableQueryPoolAprs;
     },
     protected readonly priceStore: IPriceStore,
     protected readonly userSettings: UserSettings
@@ -154,7 +155,8 @@ export class ObservablePoolsWithMetric {
       forceShowUnverified?: boolean,
       concentratedLiquidityFeature?: boolean
     ) => {
-      const showUnverified = this.showUnverified || forceShowUnverified;
+      const showUnverified =
+        this.showUnverified || forceShowUnverified || IS_TESTNET;
       const allPools = this.verifiedPoolsStore
         .get(this.chainId)
         .getAllPools(showUnverified);
@@ -259,6 +261,8 @@ export class ObservablePoolsWithMetrics extends HasMapStore<ObservablePoolsWithM
     protected readonly externalQueries: {
       queryPoolFeeMetrics: ObservableQueryPoolFeesMetrics;
       queryActiveGauges: ObservableQueryActiveGauges;
+      queryPriceRangeAprs: ObservableQueryPriceRangeAprs;
+      queryPoolAprs: ObservableQueryPoolAprs;
     },
     protected readonly priceStore: IPriceStore,
     protected readonly userSettings: UserSettings

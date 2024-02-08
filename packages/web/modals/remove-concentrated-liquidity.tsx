@@ -51,8 +51,8 @@ export const RemoveConcentratedLiquidityModal: FunctionComponent<
       disabled: config.error !== undefined || isSendingMsg,
       onClick: () => {
         return removeLiquidity()
-          .catch(console.error)
-          .finally(() => props.onRequestClose());
+          .then(() => props.onRequestClose())
+          .catch(console.error);
       },
       children: config.error
         ? t(...tError(config.error))
@@ -108,7 +108,7 @@ export const RemoveConcentratedLiquidityModal: FunctionComponent<
               />
             )}
           </div>
-          <div className="mb-8 flex justify-between rounded-[12px] bg-osmoverse-700 py-3 px-5 text-osmoverse-100 xs:flex-wrap xs:gap-y-2 xs:px-3">
+          <div className="mb-8 flex justify-between rounded-xl bg-osmoverse-700 py-3 px-5 text-osmoverse-100 xs:flex-wrap xs:gap-y-2 xs:px-3">
             {positionBaseAsset && <AssetAmount amount={positionBaseAsset} />}
             {positionQuoteAsset && <AssetAmount amount={positionQuoteAsset} />}
           </div>
@@ -147,20 +147,22 @@ export const RemoveConcentratedLiquidityModal: FunctionComponent<
             </PresetPercentageButton>
           </div>
         </div>
-        <div className="mt-8 flex w-full flex-col gap-3 py-3">
-          <div className="pl-4 text-subtitle1 font-subtitle1 xl:pl-1">
-            {t("clPositions.pendingRewards")}
+        {totalClaimableRewards.length > 0 && (
+          <div className="mt-8 flex w-full flex-col gap-3 py-3">
+            <div className="pl-4 text-subtitle1 font-subtitle1 xl:pl-1">
+              {t("clPositions.pendingRewards")}
+            </div>
+            <div className="flex flex-wrap justify-between gap-3 rounded-xl border-[1.5px]  border-osmoverse-700 px-5 py-3 xs:flex-wrap xs:gap-y-2 xs:px-3">
+              {totalClaimableRewards.map((coin) => (
+                <AssetAmount
+                  key={coin.currency.coinMinimalDenom}
+                  className="!text-body2 !font-body2"
+                  amount={coin}
+                />
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap justify-between gap-3 rounded-[12px] border-[1.5px]  border-osmoverse-700 px-5 py-3 xs:flex-wrap xs:gap-y-2 xs:px-3">
-            {totalClaimableRewards.map((coin) => (
-              <AssetAmount
-                key={coin.currency.coinMinimalDenom}
-                className="!text-body2 !font-body2"
-                amount={coin}
-              />
-            ))}
-          </div>
-        </div>
+        )}
         {accountActionButton}
       </div>
     </ModalBase>
@@ -176,7 +178,7 @@ const PresetPercentageButton: FunctionComponent<{
     <button
       className={classNames(
         "flex flex-1 cursor-pointer items-center justify-center",
-        "rounded-[8px] bg-osmoverse-700 px-5 py-2 text-h6 font-h6 text-wosmongton-100 hover:bg-osmoverse-600 xs:px-3 xs:text-subtitle1",
+        "rounded-lg bg-osmoverse-700 px-5 py-2 text-h6 font-h6 text-wosmongton-100 hover:bg-osmoverse-600 xs:px-3 xs:text-subtitle1",
         "whitespace-nowrap",
         {
           "!bg-osmoverse-600": selected,

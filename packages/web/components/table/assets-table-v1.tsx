@@ -1,6 +1,8 @@
-import { Dec } from "@keplr-wallet/unit";
+import { CoinPretty, Dec, PricePretty } from "@keplr-wallet/unit";
+import { getAssetFromAssetList } from "@osmosis-labs/utils";
 import { observer } from "mobx-react-lite";
 import Image from "next/image";
+import Link from "next/link";
 import { FunctionComponent, useCallback, useMemo, useState } from "react";
 
 import { Icon } from "~/components/assets";
@@ -13,14 +15,17 @@ import {
   AssetCell as TableCell,
   AssetNameCell,
   BalanceCell,
+  SortableAssetCell as SortableTableCell,
   TransferButtonCell,
 } from "~/components/table/cells";
 import { TransferHistoryTable } from "~/components/table/transfer-history";
-import { ColumnDef } from "~/components/table/types";
+import { ColumnDef, RowDef } from "~/components/table/types";
 import { SortDirection } from "~/components/types";
 import { initialAssetsSort } from "~/config";
+import { AssetLists } from "~/config/generated/asset-lists";
+import { ChainList } from "~/config/generated/chain-list";
 import { EventName } from "~/config/user-analytics-v2";
-import { useTranslation } from "~/hooks";
+import { useFeatureFlags, useTranslation } from "~/hooks";
 import {
   useAmplitudeAnalytics,
   useLocalStorageState,
@@ -34,10 +39,12 @@ import {
   IBCBalance,
   IBCCW20ContractBalance,
 } from "~/stores/assets";
+import { HideBalancesState } from "~/stores/user-settings";
 import { UnverifiedAssetsState } from "~/stores/user-settings";
 
 interface Props {
-  nativeBalances: CoinBalance[];
+  nativeBalances: (CoinBalance & { isVerified: boolean })[];
+  unverifiedNativeBalances: (CoinBalance & { isVerified: boolean })[];
   ibcBalances: ((IBCBalance | IBCCW20ContractBalance) & {
     depositUrlOverride?: string;
     withdrawUrlOverride?: string;
@@ -56,9 +63,44 @@ interface Props {
   onDeposit: (chainId: string, coinDenom: string, externalUrl?: string) => void;
 }
 
+const zeroDec = new Dec(0);
+
+function mapCommonFields(
+  balance: CoinPretty,
+  fiatValue: PricePretty | undefined
+): SortableTableCell {
+  const value = fiatValue?.maxDecimals(2);
+  const valueDec = value?.toDec();
+  return {
+    value: balance.toString(),
+    currency: balance.currency,
+    coinDenom: balance.denom,
+    coinImageUrl: balance.currency.coinImageUrl,
+    amount: balance.hideDenom(true).trim(true).maxDecimals(6).toString(),
+    fiatValue: value && valueDec?.gt(zeroDec) ? value.toString() : undefined,
+    fiatValueRaw: value && valueDec?.gt(zeroDec) ? valueDec : zeroDec,
+  };
+}
+
+function nativeBalancesToTableCell(
+  balances: (CoinBalance & { isVerified: boolean })[],
+  osmosisChainId: string
+): SortableTableCell[] {
+  return balances.map(({ balance, fiatValue, isVerified }) => {
+    const commonFields = mapCommonFields(balance, fiatValue);
+    return {
+      ...commonFields,
+      chainId: osmosisChainId,
+      chainName: "",
+      isVerified,
+    };
+  });
+}
+
 export const AssetsTableV1: FunctionComponent<Props> = observer(
   ({
     nativeBalances,
+    unverifiedNativeBalances,
     ibcBalances,
     unverifiedIbcBalances,
     onDeposit: _onDeposit,
@@ -68,9 +110,11 @@ export const AssetsTableV1: FunctionComponent<Props> = observer(
     const { width, isMobile } = useWindowSize();
     const { t } = useTranslation();
     const { logEvent } = useAmplitudeAnalytics();
+    const featureFlags = useFeatureFlags();
+
     const [favoritesList, onSetFavoritesList] = useLocalStorageState(
       "favoritesList",
-      ["OSMO", "ATOM"]
+      ["OSMO", "ATOM", "TIA"]
     );
 
     const [isSearching, setIsSearching] = useState(false);
@@ -114,102 +158,98 @@ export const AssetsTableV1: FunctionComponent<Props> = observer(
     const mergeWithdrawCol = width < 1000 && !isMobile;
     // Assemble cells with all data needed for any place in the table.
     const cells: TableCell[] = useMemo(
-      () => [
-        // hardcode native Osmosis assets (OSMO, ION) at the top initially
-        ...nativeBalances.map(({ balance, fiatValue }) => {
-          const value = fiatValue?.maxDecimals(2);
+      () =>
+        [
+          // Put osmo balance + native assets w/ non-zero balance to the top.
+          ...nativeBalancesToTableCell(
+            nativeBalances.filter(
+              ({ balance, fiatValue }) =>
+                balance.denom === "OSMO" ||
+                fiatValue?.maxDecimals(2).toDec().gt(zeroDec)
+            ),
+            chainStore.osmosis.chainId
+          ),
+          ...initialAssetsSort(
+            /** If user is searching, display all balances */
+            (isSearching ? unverifiedIbcBalances : ibcBalances).map(
+              (ibcBalance) => {
+                const {
+                  chainInfo: { chainId, prettyChainName },
+                  balance,
+                  fiatValue,
+                  depositUrlOverride,
+                  withdrawUrlOverride,
+                  sourceChainNameOverride,
+                } = ibcBalance;
+                const isCW20 = "ics20ContractAddress" in ibcBalance;
+                const pegMechanism =
+                  balance.currency.originCurrency?.pegMechanism;
+                const isVerified = ibcBalance.isVerified;
+                const commonFields = mapCommonFields(balance, fiatValue);
+
+                return {
+                  ...commonFields,
+                  chainName: sourceChainNameOverride
+                    ? sourceChainNameOverride
+                    : prettyChainName,
+                  chainId: chainId,
+                  /**
+                   * Hide the balance for unverified assets that need to be activated
+                   */
+                  amount:
+                    !isVerified && !shouldDisplayUnverifiedAssets
+                      ? ""
+                      : commonFields.amount,
+                  queryTags: [
+                    ...(isCW20 ? ["CW20"] : []),
+                    ...(pegMechanism ? ["stable", pegMechanism] : []),
+                  ],
+                  isUnstable: ibcBalance.isUnstable === true,
+                  isVerified,
+                  depositUrlOverride,
+                  withdrawUrlOverride,
+                  onWithdraw,
+                  onDeposit,
+                };
+              }
+            )
+          ),
+          ...nativeBalancesToTableCell(
+            (isSearching ? unverifiedNativeBalances : nativeBalances).filter(
+              ({ balance, fiatValue }) =>
+                !(
+                  balance.denom === "OSMO" ||
+                  fiatValue?.maxDecimals(2).toDec().gt(zeroDec)
+                )
+            ),
+            chainStore.osmosis.chainId
+          ),
+        ].map((balance) => {
+          const currencies = ChainList.map(
+            (info) => info.keplrChain.currencies
+          ).reduce((a, b) => [...a, ...b]);
+
+          const currency = currencies.find(
+            (el) => el.coinDenom === balance.coinDenom
+          );
+
+          const asset = getAssetFromAssetList({
+            coinMinimalDenom: currency?.coinMinimalDenom,
+            assetLists: AssetLists,
+          });
 
           return {
-            value: balance.toString(),
-            currency: balance.currency,
-            chainId: chainStore.osmosis.chainId,
-            chainName: "",
-            coinDenom: balance.denom,
-            coinImageUrl: balance.currency.coinImageUrl,
-            amount: balance
-              .hideDenom(true)
-              .trim(true)
-              .maxDecimals(6)
-              .toString(),
-            fiatValue:
-              value && value.toDec().gt(new Dec(0))
-                ? value.toString()
-                : undefined,
-            fiatValueRaw:
-              value && value.toDec().gt(new Dec(0))
-                ? value?.toDec().toString()
-                : "0",
-            isCW20: false,
-            isVerified: true,
+            ...balance,
+            assetName: asset?.rawAsset.name,
           };
         }),
-        ...initialAssetsSort(
-          /** If user is searching, display all balances */
-          (isSearching ? unverifiedIbcBalances : ibcBalances).map(
-            (ibcBalance) => {
-              const {
-                chainInfo: { chainId, chainName },
-                balance,
-                fiatValue,
-                depositUrlOverride,
-                withdrawUrlOverride,
-                sourceChainNameOverride,
-              } = ibcBalance;
-              const value = fiatValue?.maxDecimals(2);
-              const isCW20 = "ics20ContractAddress" in ibcBalance;
-              const pegMechanism =
-                balance.currency.originCurrency?.pegMechanism;
-              const isVerified = ibcBalance.isVerified;
-
-              return {
-                value: balance.toString(),
-                currency: balance.currency,
-                chainName: sourceChainNameOverride
-                  ? sourceChainNameOverride
-                  : chainName,
-                chainId: chainId,
-                coinDenom: balance.denom,
-                coinImageUrl: balance.currency.coinImageUrl,
-                /**
-                 * Hide the balance for unverified assets that need to be activated
-                 */
-                amount:
-                  !isVerified && !shouldDisplayUnverifiedAssets
-                    ? ""
-                    : balance
-                        .hideDenom(true)
-                        .trim(true)
-                        .maxDecimals(6)
-                        .toString(),
-                fiatValue:
-                  value && value.toDec().gt(new Dec(0))
-                    ? value.toString()
-                    : undefined,
-                fiatValueRaw:
-                  value && value.toDec().gt(new Dec(0))
-                    ? value?.toDec().toString()
-                    : "0",
-                queryTags: [
-                  ...(isCW20 ? ["CW20"] : []),
-                  ...(pegMechanism ? ["stable", pegMechanism] : []),
-                ],
-                isUnstable: ibcBalance.isUnstable === true,
-                isVerified,
-                depositUrlOverride,
-                withdrawUrlOverride,
-                onWithdraw,
-                onDeposit,
-              };
-            }
-          )
-        ),
-      ],
       [
         nativeBalances,
+        chainStore.osmosis.chainId,
         isSearching,
         unverifiedIbcBalances,
         ibcBalances,
-        chainStore.osmosis.chainId,
+        unverifiedNativeBalances,
         shouldDisplayUnverifiedAssets,
         onWithdraw,
         onDeposit,
@@ -311,6 +351,13 @@ export const AssetsTableV1: FunctionComponent<Props> = observer(
     );
     const canHideZeroBalances = cells.some((cell) => cell.amount !== "0");
 
+    const hideBalancesSetting =
+      userSettings.getUserSettingById<HideBalancesState>("hide-balances");
+
+    let setHideBalancesPrivacy = (hideBalances: boolean) => {
+      hideBalancesSetting?.setState({ hideBalances: hideBalances });
+    };
+
     // Filter data based on user's input in the search box.
     const [query, _setQuery, filteredSortedCells] = useFilteredData(
       hideZeroBalances
@@ -349,6 +396,23 @@ export const AssetsTableV1: FunctionComponent<Props> = observer(
       const tableData = favorites.concat(data);
       return showAllAssets ? tableData : tableData.slice(0, 10);
     }, [favoritesList, filteredSortedCells, onSetFavoritesList, showAllAssets]);
+
+    const rowDefs = useMemo<RowDef[]>(
+      () =>
+        featureFlags.tokenInfo
+          ? tableData.map((cell) => ({
+              link: `/assets/${cell.coinDenom}`,
+              makeHoverClass: () => "hover:bg-osmoverse-850",
+              onClick: () => {
+                logEvent([
+                  EventName.Assets.assetClicked,
+                  { tokenName: cell.coinDenom },
+                ]);
+              },
+            }))
+          : [],
+      [logEvent, tableData, featureFlags.tokenInfo]
+    );
 
     const tokenToActivate = cells.find(
       ({ coinDenom }) => coinDenom === confirmUnverifiedTokenDenom
@@ -431,6 +495,16 @@ export const AssetsTableV1: FunctionComponent<Props> = observer(
               <h5 className="mr-5 shrink-0">{t("assets.table.title")}</h5>
               <div className="flex items-center gap-3 lg:gap-2">
                 <Switch
+                  isOn={hideBalancesSetting?.state.hideBalances ?? false}
+                  onToggle={() => {
+                    setHideBalancesPrivacy(
+                      !hideBalancesSetting!.state.hideBalances
+                    );
+                  }}
+                >
+                  {t("assets.table.hideBalances")}
+                </Switch>
+                <Switch
                   isOn={hideZeroBalances}
                   disabled={!canHideZeroBalances}
                   onToggle={() => {
@@ -511,17 +585,39 @@ export const AssetsTableV1: FunctionComponent<Props> = observer(
                         src={assetData.coinImageUrl}
                         height={40}
                         width={40}
+                        loading="lazy"
                       />
                     </div>
                   )}
-                  <div className="flex shrink flex-col gap-1 text-ellipsis">
-                    <h6>{assetData.coinDenom}</h6>
-                    {assetData.chainName && (
-                      <span className="caption text-osmoverse-400">
-                        {assetData.chainName}
-                      </span>
-                    )}
-                  </div>
+                  {featureFlags.tokenInfo ? (
+                    <Link
+                      href={`/assets/${assetData.coinDenom}`}
+                      className="flex shrink flex-col gap-1 text-ellipsis"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        logEvent([
+                          EventName.Assets.assetClicked,
+                          { tokenName: assetData.coinDenom },
+                        ]);
+                      }}
+                    >
+                      <h6>{assetData.coinDenom}</h6>
+                      {assetData.assetName && (
+                        <span className="caption text-osmoverse-400">
+                          {assetData.assetName}
+                        </span>
+                      )}
+                    </Link>
+                  ) : (
+                    <div className="flex shrink flex-col gap-1 text-ellipsis">
+                      <h6>{assetData.coinDenom}</h6>
+                      {assetData.assetName && (
+                        <span className="caption text-osmoverse-400">
+                          {assetData.assetName}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex shrink-0 flex-col items-end gap-1">
@@ -584,12 +680,14 @@ export const AssetsTableV1: FunctionComponent<Props> = observer(
                           <Button
                             mode="text"
                             className="whitespace-nowrap !p-0"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
                               if (!cell.coinDenom) return;
                               setConfirmUnverifiedTokenDenom(cell.coinDenom);
                             }}
                           >
-                            Activate
+                            {t("assets.table.activate")}
                           </Button>
                         ) : (
                           <TransferButtonCell type="deposit" {...cell} />
@@ -607,6 +705,7 @@ export const AssetsTableV1: FunctionComponent<Props> = observer(
                     },
                   ] as ColumnDef<TableCell>[])),
             ]}
+            rowDefs={rowDefs}
             data={tableData.map((cell) => [
               cell,
               cell,
